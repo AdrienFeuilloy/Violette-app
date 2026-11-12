@@ -134,11 +134,14 @@ export function icon(name, { size = 24, color, ink } = {}) {
 /* ---------- Rocket ---------- */
 export function rocket(pose = 'peek', s = 1, prop = '') {
   const K = '#000', E = '#fffdf8';
-  const head = `<path d="M14 30 Q13 16 17 7 Q26 12 31 18 Q40 15 49 18 Q54 12 63 7 Q67 16 66 30 Q66 54 40 54 Q14 54 14 30Z" fill="${K}"/>
-<ellipse cx="31" cy="33" rx="5" ry="6.5" fill="${E}"/><ellipse cx="49" cy="33" rx="5" ry="6.5" fill="${E}"/><circle cx="32.5" cy="34.5" r="2" fill="${K}"/><circle cx="50.5" cy="34.5" r="2" fill="${K}"/>`;
+  // Tête reprise du portrait de Rocket (appli Animaux) : oreilles pointues, grands yeux blancs, petit nez
+  const face = (eyes) => `<path d="M17 44 C14 30 16 22 19 13 L28 22 Q32 21 36 22 L45 13 C48 22 50 30 47 44 Q32 54 17 44Z" fill="${K}"/>${eyes}<path d="M30.5 40.5 L33.5 40.5 L32 42.2Z" fill="${E}"/>`;
+  const open = `<ellipse cx="25.5" cy="34" rx="3.2" ry="4" fill="${E}"/><ellipse cx="38.5" cy="34" rx="3.2" ry="4" fill="${E}"/>`;
+  const shut = `<path d="M23 34 q2.5 2 5 0 M36 34 q2.5 2 5 0" stroke="${E}" stroke-width="1.6" fill="none" stroke-linecap="round"/>`;
+  const head = `<g transform="translate(40 7) scale(1.3) translate(-32 -13)">${face(open)}</g>`;
   if (pose === 'peek') return `<svg class="k-cat" width="${80 * s}" height="${68 * s}" viewBox="0 0 80 68" aria-hidden="true">${head}<ellipse cx="25" cy="62" rx="9" ry="5.5" fill="${K}"/><ellipse cx="55" cy="62" rx="9" ry="5.5" fill="${K}"/></svg>`;
   if (pose === 'sit') return `<svg class="k-cat" width="${86 * s}" height="${110 * s}" viewBox="0 0 86 110" aria-hidden="true"><path d="M60 100 Q84 100 80 78 Q78 66 70 70" stroke="${K}" stroke-width="7" fill="none" stroke-linecap="round"/><path d="M20 106 Q16 50 40 46 Q64 50 60 106Z" fill="${K}"/>${head}${prop}</svg>`;
-  if (pose === 'sleep') return `<svg class="k-cat" width="${110 * s}" height="${54 * s}" viewBox="0 0 110 54" aria-hidden="true"><path d="M8 52 Q4 22 42 22 Q90 20 98 42 Q100 52 84 52Z" fill="${K}"/><path d="M12 30 Q11 18 15 10 Q22 14 26 19 Q33 17 40 19 Q44 14 51 10 Q54 18 54 30 Q54 48 33 48 Q12 48 12 30Z" fill="${K}"/><path d="M22 32 q4 3 8 0 M37 32 q4 3 8 0" stroke="${E}" stroke-width="2" fill="none" stroke-linecap="round"/></svg>`;
+  if (pose === 'sleep') return `<svg class="k-cat" width="${110 * s}" height="${54 * s}" viewBox="0 0 110 54" aria-hidden="true"><path d="M8 52 Q4 22 42 22 Q90 20 98 42 Q100 52 84 52Z" fill="${K}"/><g transform="translate(33 9) scale(1.1) translate(-32 -13)">${face(shut)}</g></svg>`;
   return '';
 }
 export const letterProp = () => `<g transform="translate(46 70) rotate(-12)"><rect width="30" height="21" rx="3" fill="#fffdf8" stroke="#000" stroke-width="2"/><path d="M1 2 l14 10 l14 -10" fill="none" stroke="#000" stroke-width="2"/><circle cx="15" cy="15" r="3.5" fill="#ff4f5e"/></g>`;
