@@ -98,15 +98,19 @@ function rectOf1(sel) {
   return { el: els[0], left: l, top: t, width: r - l, height: b - t };
 }
 const wait = ms => new Promise(r => setTimeout(r, ms));
+// Attend la fin d'un défilement (la position ne bouge plus pendant 3 images), 1,2 s au plus
+const scrollSettled = () => new Promise(res => { let last = -1, same = 0; const t0 = performance.now();
+  const tick = () => { const y = scrollY; same = y === last ? same + 1 : 0; last = y; if (same >= 3 || performance.now() - t0 > 1200) res(); else requestAnimationFrame(tick); }; requestAnimationFrame(tick); });
 
 export function startTour(appId) {
   const steps = TOURS[appId]; if (!steps?.length) return;
   const root = document.createElement('div'); root.className = 'k-tour'; root.setAttribute('role', 'dialog'); root.setAttribute('aria-modal', 'true');
   root.innerHTML = `<div class="k-tour-spot"></div><div class="k-tour-card" aria-live="polite"><h3></h3><p></p><div class="k-tour-foot"><span class="k-tour-dots">${steps.map(() => '<i></i>').join('')}</span><button class="k-tour-skip">Passer</button><button class="k-tour-prev">‹</button><button class="k-tour-next">Suivant</button></div></div>`;
+  root.style.visibility = 'hidden'; // rien n'apparaît avant d'être bien placé
   document.body.appendChild(root);
   const spot = root.querySelector('.k-tour-spot'), card = root.querySelector('.k-tour-card');
   let i = 0, busy = false;
-  const close = () => { root.remove(); removeEventListener('keydown', onKey); removeEventListener('resize', place); const last = steps.findLast(s => s.click); const home = steps[steps.length - 1].click; if (last && home) document.querySelector(home)?.click(); };
+  const close = () => { root.remove(); removeEventListener('keydown', onKey); removeEventListener('resize', place); removeEventListener('scroll', place); const last = steps.findLast(s => s.click); const home = steps[steps.length - 1].click; if (last && home) document.querySelector(home)?.click(); };
   const place = () => {
     const s = steps[i], r = s.sel && rectOf(s.sel);
     if (!r) { spot.style.cssText = 'left:50%;top:40%;width:0;height:0'; card.style.top = '50%'; card.style.bottom = ''; card.style.transform = 'translate(-50%,-50%)'; return; }
@@ -122,12 +126,21 @@ export function startTour(appId) {
     const s = steps[i];
     if (s.click) { document.querySelector(s.click)?.click(); await wait(260); }
     const r = s.sel && rectOf(s.sel);
-    if (r && (r.top < 70 || r.top + Math.min(r.height, 240) > innerHeight - 90)) { r.el.scrollIntoView({ block: 'center', behavior: 'smooth' }); await wait(380); }
+    if (r && (r.top < 70 || r.top + Math.min(r.height, 240) > innerHeight - 90)) {
+      const first = root.style.visibility === 'hidden';
+      r.el.scrollIntoView({ block: 'center', behavior: first ? 'auto' : 'smooth' }); // au lancement : saut direct, sans animation
+      await scrollSettled();
+    }
     card.querySelector('h3').textContent = s.title; card.querySelector('p').textContent = s.text;
     card.querySelectorAll('.k-tour-dots i').forEach((d, k) => d.classList.toggle('on', k === i));
     card.querySelector('.k-tour-prev').style.visibility = i ? 'visible' : 'hidden';
     card.querySelector('.k-tour-next').textContent = i === steps.length - 1 ? 'Terminer' : 'Suivant';
-    place(); busy = false;
+    if (root.style.visibility === 'hidden') {
+      spot.style.transition = 'none'; card.style.transition = 'none';
+      place(); void spot.offsetWidth; // position initiale appliquée sans animation
+      spot.style.transition = ''; card.style.transition = ''; root.style.visibility = '';
+    } else place();
+    busy = false;
   };
   const go = d => { if (busy) return; const n = i + d; if (n < 0) return; if (n >= steps.length) return close(); i = n; show(); };
   const onKey = e => { if (e.key === 'Escape') close(); else if (e.key === 'ArrowRight') go(1); else if (e.key === 'ArrowLeft') go(-1); };
@@ -135,7 +148,7 @@ export function startTour(appId) {
   root.querySelector('.k-tour-prev').onclick = () => go(-1);
   root.querySelector('.k-tour-skip').onclick = close;
   root.addEventListener('click', e => { if (e.target === root) go(1); });
-  addEventListener('keydown', onKey); addEventListener('resize', place);
+  addEventListener('keydown', onKey); addEventListener('resize', place); addEventListener('scroll', place, { passive: true });
   show();
 }
 
