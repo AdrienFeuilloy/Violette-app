@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="ui/kit.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<title>Cha-cha le compteur</title>
+<style>
+.period{display:flex;gap:8px;align-items:center;margin-bottom:10px}
+.period select{flex:1;border:1.5px solid var(--line);background:var(--card);border-radius:12px;padding:9px 10px;font-weight:700}
+.chart-box{position:relative;height:220px}
+.seg{display:flex;background:var(--soft);border-radius:10px;padding:3px;gap:2px}
+.seg button{border:0;background:none;border-radius:8px;padding:4px 9px;font-size:12px;font-weight:700;color:var(--acc)}
+.seg button.on{background:var(--card);box-shadow:var(--shadow)}
+.card-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:8px}
+.card-h h3{margin:0;font-size:15px}
+.cdot{display:inline-block;width:10px;height:10px;border-radius:50%;flex:none}
+.cats{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.cats .k-chip{display:flex;align-items:center;gap:6px;padding:5px 10px;font-size:12px}
+.cats .k-chip.off{opacity:.4}
+.amt{font-weight:800;white-space:nowrap}.amt.neg{color:var(--bad)}.amt.pos{color:var(--ok)}
+.tagb{font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:99px;white-space:nowrap}
+.t-Inévitable{background:rgba(255,79,94,.15);color:#e0364a}.t-Évitable{background:rgba(20,160,107,.15);color:var(--ok)}.t-Non-applicable{background:rgba(47,134,255,.14);color:#2f86ff}.t-Non-défini{background:var(--line);color:var(--mut)}
+.choice{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}
+.choice button{display:flex;align-items:center;gap:8px;border:1.5px solid var(--line);background:var(--card);border-radius:14px;padding:11px 12px;font-weight:700;font-size:13px;text-align:left}
+.choice button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.choice button.sug{border-color:var(--acc);border-style:dashed}
+.wiz-tx{background:var(--card);border-radius:16px;padding:14px;box-shadow:var(--shadow);display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:14px}
+.mt{width:100%;border-collapse:collapse;font-size:12.5px}
+.mt th,.mt td{padding:8px 4px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+.mt th:first-child,.mt td:first-child{text-align:left}
+.mt th{color:var(--mut);font-size:10.5px;text-transform:uppercase;letter-spacing:.5px}
+.wish-ok{background:rgba(20,160,107,.08)}
+.stars{color:var(--acc);letter-spacing:1px;font-size:11px}
+.menu{display:grid;gap:8px}
+.menu button{display:flex;gap:12px;align-items:center;border:0;background:var(--card);border-radius:14px;padding:13px;box-shadow:var(--shadow);text-align:left;font-weight:700}
+.menu button span{font-size:22px}.menu button small{display:block;font-weight:500;color:var(--mut)}
+</style>
+</head>
+<body>
+<header id="hero"></header>
+<main class="k-wrap" id="main"></main>
+<script type="module">
+import { initApp, publishSummary, hero, DocSync, read, write, esc, $, $$, uid, now, todayISO, isISO, frDate, daysTo, eur, norm, openSheet, closeSheet, toast, bubble, openCommonSettings, nav, sound, getAI, aiAsk, download, pickFiles } from './ui/kit.js';
+import { Passerelle, empreinte } from './passerelle-budget.js';
+initApp('budget');
+
+/* ======================= Données ======================= */
+const DEFAULT_CATS = ['Alimentation', 'Transport', 'Logement & Charges', 'Santé', 'Abonnements', 'Loisirs', 'Shopping', 'Restaurants', 'Bébé', 'Animaux', 'Revenus', 'Divers'];
+const DEFAULT_COLORS = { 'Alimentation': '#ffb703', 'Transport': '#48cae4', 'Logement & Charges': '#90be6d', 'Santé': '#ff8fa3', 'Abonnements': '#cfbaf0', 'Loisirs': '#f1c0e8', 'Shopping': '#ffcfd2', 'Restaurants': '#f8961e', 'Bébé': '#a678ff', 'Animaux': '#ff7a1f', 'Revenus': '#80ed99', 'Divers': '#c0b9dd' };
+const TAGS = ['Inévitable', 'Évitable', 'Non applicable'];
+// La liste d'achats de départ est rangée dans le dépôt privé (JSON_BUDGET.json), jamais dans ce code public.
+function seed() {
+  const s = { app: 'budget', schema: 1, transactions: [], wishes: [], tombstones: {}, settings: { categories: DEFAULT_CATS, colors: DEFAULT_COLORS, learned: {}, wizard: null, cushion: 300 }, settingsAt: 0, updatedAt: 0 };
+  // Reprise automatique des données de l'ancienne appli si elles existent sur ce navigateur
+  const old = read('liquid_budget_transactions_v1', null);
+  if (Array.isArray(old) && old.length) {
+    s.transactions = old.map(fromOld);
+    s.settings.categories = read('liquid_budget_categories_v1', DEFAULT_CATS);
+    s.settings.colors = { ...DEFAULT_COLORS, ...(read('liquid_budget_colors_v1', {}) || {}) };
+  }
+  return s;
+}
+const fromOld = t => ({ id: String(t.id).replace('.', '_'), date: t.date, label: t.label, amount: +t.amount, category: t.category || 'Non défini', tag: t.tag || 'Non défini', createdAt: now(), updatedAt: now() });
+const store = new DocSync({ key: 'budget.data.v1', path: 'JSON_BUDGET.json', label: 'Cha-cha', lists: ['transactions', 'wishes'], empty: seed, onRemote: () => renderAll() });
+const D = () => store.data, S = () => store.data.settings;
+if (!read('budget.data.v1')) store.save();
+const saveSettings = () => { D().settingsAt = now(); store.save(); };
+const cats = () => S().categories;
+const colorOf = c => S().colors[c] || '#c0b9dd';
+const unclassified = t => !t.category || t.category === 'Non défini' || !t.tag || t.tag === 'Non défini';
+const months = () => [...new Set(D().transactions.map(t => t.date.slice(0, 7)))].sort().reverse();
+const monthLbl = m => { if (!m || m === 'ALL') return 'Toutes les dates'; const [y, mo] = m.split('-'); const s = new Date(+y, +mo - 1, 1).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }); return s[0].toUpperCase() + s.slice(1); };
+
+/* ======================= Catégorisation automatique ======================= */
+const R = (re, category, tag = 'Inévitable', sign = 0) => ({ re, category, tag, sign });
+const RULES = [
+  R(/\b(SALAIRE|PAIE|PAYE|FRANCE TRAVAIL|POLE EMPLOI|CAF\b|ALLOC|PRIME D.ACTIVITE|REMBOURSEMENT|REMB\b)/, 'Revenus', 'Non applicable', 1),
+  R(/\b(CPAM|AMELI|MUTUELLE|HARMONIE|MGEN|PHARMA|PHIE|MEDECIN|DOCTEUR|DR |CABINET MED|LABO|DENTIST|OPTIC|KINE|HOPITAL|CLINIQUE|ORTHOP)/, 'Santé', 'Inévitable'),
+  R(/\b(VETO|VETERINAIRE|CLINIQUE VET|ZOOMALIA|ZOOPLUS|ANIMALIS|TRUFFAUT|CROQUETTE|LITIERE|MAXI ZOO)/, 'Animaux', 'Inévitable'),
+  R(/\b(VERBAUDET|AUBERT|BEBE|PAMPERS|ORCHESTRA|OKAIDI|CRECHE|NOUNOU|ASSISTANTE MATERNELLE|PAJEMPLOI|CYRILLUS|NATALYS)/, 'Bébé', 'Inévitable'),
+  R(/\b(UBER EATS|DELIVEROO|JUST EAT|MC ?DO|MCDONALD|BURGER KING|KFC|QUICK|DOMINO|PIZZ|SUSHI|KEBAB|RESTAU|BRASSERIE|BISTRO|STARBUCKS|COLUMBUS|PAUL\b|CAFE|BOULANGERIE.*SNACK)/, 'Restaurants', 'Évitable'),
+  R(/\b(LECLERC|CARREFOUR|AUCHAN|LIDL|ALDI|INTERMARCHE|INTERMARCH|SUPER U|HYPER U|SYSTEME U|CORA|MONOPRIX|FRANPRIX|CASINO|NETTO|GRAND FRAIS|PICARD|BIOCOOP|MATCH\b|SIMPLY|VIVAL|SPAR\b|BOUCHERIE|BOULANGERIE|PRIMEUR|LA VIE CLAIRE|NATUREO)/, 'Alimentation', 'Inévitable'),
+  R(/\b(TOTALENERGIES ELEC|TOTAL ENERGIES ELEC|EDF|ENGIE|VEOLIA|SUEZ|SAUR|EAU DE|ENERGIE|GAZ|LOYER|SYNDIC|FONCIA|NEXITY|TAXE FONCIERE|TAXE HABITATION|MAIF|MACIF|MATMUT|AXA|GROUPAMA|MMA\b|ALLIANZ|GENERALI|PACIFICA|CREDIT IMMO|PRET IMMO|ECHEANCE PRET|DGFIP|IMPOT)/, 'Logement & Charges', 'Inévitable'),
+  R(/\b(NETFLIX|SPOTIFY|DEEZER|DISNEY|CANAL|PRIME VIDEO|AMAZON PRIME|APPLE\.COM|ICLOUD|GOOGLE|YOUTUBE|FREE MOBILE|FREE TELECOM|FREE\b|ORANGE|SOSH|SFR|RED BY|BOUYGUES|B&YOU|OPENAI|CHATGPT|ANTHROPIC|CLAUDE\.AI|ADOBE|MICROSOFT|XBOX|PLAYSTATION|NINTENDO|BASIC.FIT|FITNESS|SALLE DE SPORT|DEEZER)/, 'Abonnements', 'Inévitable'),
+  R(/\b(TOTAL\b|TOTALENERGIES|ESSO|BP\b|SHELL|AVIA|STATION|CARBURANT|AGIP|SNCF|OUIGO|TER\b|TGV|PEAGE|SANEF|APRR|AREA|VINCI AUTO|AUTOROUTE|PARKING|INDIGO|BLABLACAR|UBER\b|NORAUTO|FEU VERT|SPEEDY|MIDAS|GARAGE|CONTROLE TECH|SECURITEST|DEKRA|AUTOSUR|AD AMBITION|PNEU|ULTIME)/, 'Transport', 'Inévitable'),
+  R(/\b(CINEMA|PATHE|UGC|CGR|MEGARAMA|TICKETMASTER|FNAC SPECTACLE|STEAM|EPIC GAMES|PARC|MUSEE|BOWLING|AIRBNB|BOOKING|HOTEL|ESCAPE|LASER|PISCINE|CULTURA|MICROMANIA)/, 'Loisirs', 'Évitable'),
+  R(/\b(AMAZON|AMZN|CDISCOUNT|FNAC|DARTY|BOULANGER|IKEA|LEROY MERLIN|CASTORAMA|BRICO|ACTION\b|KIABI|DECATHLON|ZARA|H&M|H ET M|PRIMARK|VINTED|LEBONCOIN|SHEIN|TEMU|ALIEXPRESS|MAISONS DU MONDE|LA HALLE|JARDILAND|GAMM VERT|BLANCHEPORTE|ETSY|ZALANDO|GIFI|NOZ|CENTRAKOR|HEMA)/, 'Shopping', 'Évitable'),
+];
+const STOP = /\b(CB|CARTE|PAIEMENT|PAIEMENTS|PRLV|PRELEVEMENT|PRELEV|SEPA|VIR|VIREMENT|INST|INSTANTANE|RECU|EMIS|RETRAIT|DAB|FACT|FACTURE|ECH|ECHEANCE|EUR|EUROS|DU|LE|LA|DE|DES|X\d{3,4}|\d{1,2}[\/.]\d{1,2}([\/.]\d{2,4})?|\d{5,}|[A-Z]{0,2}\d+[A-Z\d]*)\b/g;
+const cleanLabel = l => norm(l).toUpperCase().replace(/[*_:;,/\\-]+/g, ' ').replace(STOP, ' ').replace(/\s+/g, ' ').trim();
+const maskLabel = l => cleanLabel(l).split(' ').filter(w => w && !/\d/.test(w) && !/^(EUR|EUROS?|E)$/.test(w)).join(' ').slice(0, 60);
+const keyOf = l => cleanLabel(l).split(' ').slice(0, 3).join(' ');
+function learn() {
+  const L = {};
+  for (const t of D().transactions) if (!unclassified(t) && t.auto !== 'regle') { const k = keyOf(t.label); if (!k) continue; const e = (L[k] ||= {}); const kk = t.category + '|' + t.tag; e[kk] = (e[kk] || 0) + 1; }
+  const out = {};
+  for (const [k, v] of Object.entries(L)) { const [best] = Object.entries(v).sort((a, b) => b[1] - a[1]); const [category, tag] = best[0].split('|'); out[k] = { category, tag, n: best[1] }; }
+  S().learned = { ...(S().learned || {}), ...out };
+}
+function suggest(t) {
+  const k = keyOf(t.label);
+  const l = S().learned?.[k];
+  if (l && cats().includes(l.category)) return { ...l, src: 'appris' };
+  const up = norm(t.label).toUpperCase();
+  for (const r of RULES) if (r.re.test(up) && (!r.sign || Math.sign(t.amount) === r.sign) && cats().includes(r.category)) return { category: r.category, tag: t.amount > 0 && r.category !== 'Revenus' ? 'Non applicable' : r.tag, src: 'regle' };
+  if (t.amount > 0 && cats().includes('Revenus')) return { category: 'Revenus', tag: 'Non applicable', src: 'regle' };
+  return null;
+}
+function autoClassify(list) { let n = 0; for (const t of list) if (unclassified(t)) { const s = suggest(t); if (s) { t.category = s.category; t.tag = s.tag; t.auto = s.src; t.updatedAt = now(); n++; } } return n; }
+async function aiClassify() {
+  const ai = getAI(); if (!ai.key) return toast("Ajoute ta clé Gemini dans les réglages (⚙︎)");
+  const todo = D().transactions.filter(unclassified);
+  // Confidentialité : seuls des libellés nettoyés partent chez Gemini.
+  // Aucun montant, aucune date, aucun solde, aucun numéro (carte, compte, référence) : tout mot contenant un chiffre est retiré.
+  const groups = new Map();
+  for (const t of todo) { const m = maskLabel(t.label); if (!m) continue; if (!groups.has(m)) groups.set(m, []); groups.get(m).push(t); }
+  const labels = [...groups.keys()].slice(0, 120);
+  if (!labels.length) return toast('Rien à classer');
+  const body = openSheet('Classement par l’IA', `<div class="k-spin"></div><p class="k-hint" style="text-align:center">${labels.length} libellés envoyés à Gemini, sans montant ni numéro…</p>`);
+  try {
+    const txt = await aiAsk([`Tu classes des libellés de relevé bancaire français (montants et numéros retirés volontairement).\nCatégories autorisées : ${cats().join(', ')}.\nTags : Inévitable (dépense nécessaire), Évitable (dépense de confort), Non applicable (revenus, virements internes).\nRéponds UNIQUEMENT en JSON : {"items":[{"i":numéro de la ligne,"category":"…","tag":"…"}]}. Si tu ne sais pas, category "Divers".\nLibellés :\n${labels.map((l, i) => (i + 1) + '. ' + l).join('\n')}`], { maxTokens: 8000 });
+    const j = JSON.parse(txt.slice(txt.indexOf('{'), txt.lastIndexOf('}') + 1));
+    let n = 0;
+    for (const x of j.items || []) {
+      const lab = labels[(+x.i || 0) - 1]; if (!lab || !cats().includes(x.category) || ![...TAGS].includes(x.tag)) continue;
+      for (const t of groups.get(lab)) { t.category = x.category; t.tag = x.tag; t.auto = 'ia'; t.updatedAt = now(); n++; }
+    }
+    store.save(); closeSheet(); renderAll(); sound('success'); toast(`${n} opérations classées par l'IA ✨`);
+  } catch (e) { body.innerHTML = `<p>${esc(e.message)}</p>`; }
+}
+
+/* ======================= Passerelle Paperasse ======================= */
+const pass = new Passerelle();
+let upcoming = [];
+async function loadUpcoming() {
+  try { const r = await pass.aImporter(); upcoming = r.toutes.filter(m => m.statut === 'prevue' && daysTo(m.date) >= -15).sort((a, b) => a.date.localeCompare(b.date)); renderAll(); } catch { }
+}
+async function matchPaperasse(newTx) {
+  let all; try { all = (await pass.aImporter()).toutes; } catch { return 0; }
+  const acks = []; let n = 0;
+  for (const t of newTx.filter(t => t.amount < 0)) {
+    const m = all.find(m => Math.abs(m.montant - Math.abs(t.amount)) < 0.011 && Math.abs((new Date(m.date) - new Date(t.date)) / 864e5) <= 12 && !acks.some(a => a.key === m.key));
+    if (!m) continue;
+    if (cats().includes(m.categorieBudget)) { t.category = m.categorieBudget; if (unclassified(t)) t.tag = 'Inévitable'; t.auto = 'paperasse'; }
+    t.docId = m.docId; t.docLink = m.lien; t.updatedAt = now(); acks.push({ key: m.key, budgetId: t.id }); n++;
+  }
+  if (acks.length) pass.confirmer(acks).catch(() => {});
+  return n;
+}
+
+/* ======================= Import CSV ======================= */
+function decode(buf) { const u = new TextDecoder('utf-8').decode(buf); return u.includes('�') ? new TextDecoder('windows-1252').decode(buf) : u; }
+function parseCSV(text) {
+  const lines = text.replace(/^﻿/, '').split(/\r?\n/).filter(l => l.trim());
+  if (!lines.length) return [];
+  const cnt = ch => (lines.slice(0, 5).join('\n').match(new RegExp(ch === '\t' ? '\t' : '\\' + ch, 'g')) || []).length;
+  const sep = [';', ',', '\t'].sort((a, b) => cnt(b) - cnt(a))[0];
+  const split = line => { const r = []; let cur = '', q = false; for (const ch of line) { if (ch === '"') q = !q; else if (ch === sep && !q) { r.push(cur.trim()); cur = ''; } else cur += ch; } r.push(cur.trim()); return r.map(s => s.replace(/^"|"$/g, '').trim()); };
+  const head = split(lines[0]).map(c => norm(c));
+  let cD = head.findIndex(c => c.includes('date') && !c.includes('valeur')); if (cD < 0) cD = 0;
+  let cL = head.findIndex(c => /libell|label|description|intitule|operation/.test(c));
+  const cDe = head.findIndex(c => /debit/.test(c)), cCr = head.findIndex(c => /credit/.test(c)), cA = head.findIndex(c => /montant|amount|somme/.test(c));
+  const hasHead = head.some(c => /date|libell|montant|debit|credit/.test(c));
+  if (cL < 0) cL = head.length > 4 ? 4 : 1;
+  const num = v => { if (!v) return 0; let s = v.replace(/\s| |€/g, ''); if (/,\d{1,2}$/.test(s)) s = s.replace(/\./g, '').replace(',', '.'); return parseFloat(s.replace(/[^0-9.-]/g, '')) || 0; };
+  const out = [];
+  lines.slice(hasHead ? 1 : 0).forEach(line => {
+    const c = split(line);
+    const raw = c[cD] || c[0], label = c[cL] || c.at(-1);
+    let amount = 0;
+    if (cDe >= 0 && cCr >= 0) { const de = num(c[cDe]), cr = num(c[cCr]); amount = cr ? Math.abs(cr) : -Math.abs(de); }
+    else if (cA >= 0) amount = num(c[cA]);
+    else if (c.length >= 4) { const de = num(c[2]), cr = num(c[3]); amount = cr ? Math.abs(cr) : -Math.abs(de); }
+    const p = (raw || '').split(/[\/.-]/); let date = '';
+    if (p.length === 3) date = p[0].length === 4 ? `${p[0]}-${p[1].padStart(2, '0')}-${p[2].padStart(2, '0')}` : `${p[2].length === 2 ? '20' + p[2] : p[2]}-${p[1].padStart(2, '0')}-${p[0].padStart(2, '0')}`;
+    if (isISO(date) && label && amount) out.push({ date, label, amount: Math.round(amount * 100) / 100 });
+  });
+  return out;
+}
+async function importCSV() {
+  const [f] = await pickFiles({ accept: '.csv,text/csv,.txt' }); if (!f) return;
+  const rows = parseCSV(decode(await f.arrayBuffer()));
+  const T = D().transactions, fresh = [];
+  for (const r of rows) {
+    if (T.some(t => t.date === r.date && norm(t.label) === norm(r.label) && Math.abs(t.amount - r.amount) < .001) || fresh.some(t => t.date === r.date && t.label === r.label && t.amount === r.amount)) continue;
+    fresh.push({ id: uid(), ...r, category: 'Non défini', tag: 'Non défini', createdAt: now(), updatedAt: now() });
+  }
+  if (!fresh.length) return toast('Aucune nouvelle opération dans ce fichier');
+  learn();
+  const linked = await matchPaperasse(fresh);
+  const auto = autoClassify(fresh);
+  T.push(...fresh); store.save(); sound('success'); renderAll();
+  const left = fresh.filter(unclassified).length;
+  const body = openSheet('Import terminé', `<div class="k-card"><b>${fresh.length} nouvelles opérations</b><div class="k-hint" style="margin-top:6px">✨ ${auto} classées automatiquement${linked ? `<br>📎 ${linked} reliées à un document de Paperasse` : ''}<br>${left ? `❓ ${left} à classer` : '✓ Tout est classé'}</div></div>
+    <div class="k-btns">${left ? `<button class="k-btn" id="goW">Classer les ${left} restantes</button>` : ''}${left && getAI().key ? `<button class="k-btn ghost" id="goAI">✨ Demander à l'IA</button>` : ''}<button class="k-btn line" id="goOk">OK</button></div>`);
+  $('#goW', body) && ($('#goW', body).onclick = () => startWizard('ALL'));
+  $('#goAI', body) && ($('#goAI', body).onclick = aiClassify);
+  $('#goOk', body).onclick = () => closeSheet();
+}
+
+/* ======================= Affichage ======================= */
+let tab = 'dash', period = read('budget.ui', {})?.period || 'ALL', chartTypes = { tag: 'doughnut', cat: 'bar', month: 'bar' }, hiddenCats = new Set(), charts = {}, filt = { q: '', month: 'ALL', tag: 'ALL', cat: 'ALL' };
+const inPeriod = t => period === 'ALL' || t.date.startsWith(period);
+function sums(list) {
+  let solde = 0, rev = 0, inev = 0, ev = 0; const byCat = {};
+  for (const t of list) { solde += t.amount; if (t.amount > 0) rev += t.amount; else { const a = -t.amount; if (t.tag === 'Inévitable') inev += a; else if (t.tag === 'Évitable') ev += a; byCat[t.category] = (byCat[t.category] || 0) + a; } }
+  return { solde, rev, inev, ev, byCat };
+}
+function renderHero() {
+  const s = sums(D().transactions.filter(inPeriod));
+  const k = v => Math.abs(v) >= 1000 ? (v / 1000).toFixed(1).replace('.', ',') + 'k' : Math.round(v);
+  hero($('#hero'), {
+    app: 'budget', title: 'Cha-cha', sub: '‹ Accueil · le compteur', subHref: './index.html',
+    actions: store.pill() + `<button class="k-ibtn" id="set" aria-label="Réglages">⚙︎</button>`,
+    rings: [
+      { label: 'Solde', html: `<b style="font-size:14px;color:${s.solde < 0 ? 'var(--bad)' : 'var(--ok)'}">${k(s.solde)} €</b>` },
+      { label: 'Revenus', html: `<b style="font-size:14px;color:var(--ok)">${k(s.rev)}</b>`, color: '#14a06b' },
+      { label: 'Inévitables', html: `<b style="font-size:14px;color:#e0364a">${k(s.inev)}</b>`, color: '#ff8fa3' },
+      { label: 'Évitables', html: `<b style="font-size:14px;color:var(--ok)">${k(s.ev)}</b>`, color: '#80ed99' },
+    ],
+    after: el => { store.bindPills(el); $('#set', el).onclick = settings; }
+  });
+}
+const periodSel = () => `<div class="period"><select id="per"><option value="ALL">🌐 Toutes les dates</option>${months().map(m => `<option value="${m}" ${m === period ? 'selected' : ''}>📅 ${monthLbl(m)}</option>`).join('')}</select></div>`;
+function bindPeriod() { const p = $('#per'); if (p) p.onchange = () => { period = p.value; write('budget.ui', { period }); sound('click'); renderAll(); }; }
+function txRow(t) {
+  return `<button class="k-row" data-tx="${t.id}"><span class="cdot" style="background:${colorOf(t.category)}"></span><span class="k-main"><b>${esc(t.label)}</b><small>${frDate(t.date, { day: 'numeric', month: 'short' })} · ${esc(t.category || 'Non défini')}${t.auto ? ' ✨' : ''}${t.docId ? ' 📎' : ''}</small></span>
+    <span style="text-align:right"><span class="amt ${t.amount < 0 ? 'neg' : 'pos'}">${eur(t.amount)}</span><br><span class="tagb t-${(t.tag || 'Non défini').replace(' ', '-')}">${esc(t.tag || 'Non défini')}</span></span></button>`;
+}
+function renderDash() {
+  const list = D().transactions.filter(inPeriod), s = sums(list), un = list.filter(unclassified);
+  const autoN = list.filter(t => t.auto && !t.checked).length;
+  const tip = !D().transactions.length ? 'Importe ton relevé bancaire (CSV) avec le bouton ＋ : je classe tout seul ce que je reconnais.'
+    : un.length ? `${un.length} opérations à classer (${eur(un.reduce((a, t) => a + (t.amount < 0 ? -t.amount : 0), 0))}). On s'y met ensemble ?`
+    : s.solde >= 0 ? `Solde positif de ${eur(s.solde)} sur la période. Il reste des croquettes !` : `Attention, solde négatif de ${eur(s.solde)} sur la période.`;
+  let h = bubble(esc(tip)) + periodSel();
+  if (un.length) h += `<div class="k-card" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b style="flex:1">❓ ${un.length} non classées</b><button class="k-btn sm" id="dW">Pas-à-pas</button>${getAI().key ? `<button class="k-btn sm ghost" id="dAI">✨ IA</button>` : ''}</div>`;
+  if (autoN) h += `<p class="k-hint">✨ ${autoN} opérations classées automatiquement — <a href="#" id="dCheck">les vérifier</a></p>`;
+  h += `<div class="k-card"><div class="card-h"><h3>Inévitable vs évitable</h3><div class="seg" data-ch="tag"><button data-ty="doughnut" class="${chartTypes.tag === 'doughnut' ? 'on' : ''}">◔</button><button data-ty="bar" class="${chartTypes.tag === 'bar' ? 'on' : ''}">▥</button></div></div><div class="chart-box"><canvas id="cTag"></canvas></div></div>
+    <div class="k-card"><div class="card-h"><h3>Par catégorie</h3><div class="seg" data-ch="cat"><button data-ty="doughnut" class="${chartTypes.cat === 'doughnut' ? 'on' : ''}">◔</button><button data-ty="bar" class="${chartTypes.cat === 'bar' ? 'on' : ''}">▥</button></div></div>
+      <div style="display:flex;gap:6px;margin-bottom:8px"><button class="k-btn sm ghost" id="cAll">Tout</button><button class="k-btn sm line" id="cNone">Aucun</button></div>
+      <div class="cats">${cats().filter(c => c !== 'Revenus').map(c => `<button class="k-chip ${hiddenCats.has(c) ? 'off' : ''}" data-cat="${esc(c)}"><span class="cdot" style="background:${colorOf(c)}"></span>${esc(c)}</button>`).join('')}</div>
+      <div class="chart-box"><canvas id="cCat"></canvas></div></div>`;
+  if (upcoming.length) h += `<div class="k-sec acc">À venir (Paperasse)</div><div class="k-card flush">${upcoming.slice(0, 6).map(m => `<a class="k-row" href="${m.lien}" style="text-decoration:none;color:inherit"><span class="cdot" style="background:${colorOf(m.categorieBudget)}"></span><span class="k-main"><b>${esc(m.libelle)}</b><small>${frDate(m.date)} · ${esc(m.tiers)}</small></span><span class="amt neg">−${eur(m.montant)}</span></a>`).join('')}<div class="k-row" style="cursor:default"><span class="k-main"><b>Total à prévoir</b></span><span class="amt neg">−${eur(upcoming.reduce((a, m) => a + m.montant, 0))}</span></div></div>`;
+  $('#main').innerHTML = h;
+  bindPeriod();
+  $('#dW') && ($('#dW').onclick = () => startWizard(period === 'ALL' ? 'ALL' : period));
+  $('#dAI') && ($('#dAI').onclick = aiClassify);
+  $('#dCheck') && ($('#dCheck').onclick = e => { e.preventDefault(); startWizard(period, true); });
+  $$('[data-ch] button').forEach(b => b.onclick = () => { chartTypes[b.parentNode.dataset.ch] = b.dataset.ty; sound('click'); renderDash(); });
+  $$('[data-cat]').forEach(b => b.onclick = () => { const c = b.dataset.cat; hiddenCats.has(c) ? hiddenCats.delete(c) : hiddenCats.add(c); sound('click'); renderDash(); });
+  $('#cAll').onclick = () => { hiddenCats.clear(); sound('click'); renderDash(); };
+  $('#cNone').onclick = () => { cats().forEach(c => hiddenCats.add(c)); sound('click'); renderDash(); };
+  drawCharts(s);
+}
+function chartDefaults() {
+  if (!window.Chart) return false;
+  const dark = document.documentElement.dataset.theme === 'dark';
+  Chart.defaults.color = dark ? '#9d97a8' : '#8a8496'; Chart.defaults.borderColor = dark ? '#2e2b3b' : '#ebe3d3'; Chart.defaults.font.family = 'Inter, system-ui, sans-serif';
+  return true;
+}
+function mk(id, cfg) { charts[id]?.destroy(); const c = document.getElementById(id); if (c) charts[id] = new Chart(c, cfg); }
+function drawCharts(s) {
+  if (!chartDefaults()) return;
+  const bc = document.documentElement.dataset.theme === 'dark' ? '#211f2c' : '#fffdf8';
+  mk('cTag', { type: chartTypes.tag, data: { labels: ['Inévitable', 'Évitable'], datasets: [{ data: [s.inev, s.ev], backgroundColor: ['#ff8fa3', '#80ed99'], borderColor: bc, borderWidth: 2, borderRadius: chartTypes.tag === 'bar' ? 8 : 0 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: chartTypes.tag === 'doughnut', position: 'bottom' } }, scales: chartTypes.tag === 'bar' ? { y: { beginAtZero: true } } : {} } });
+  const C = cats().filter(c => c !== 'Revenus' && !hiddenCats.has(c));
+  mk('cCat', { type: chartTypes.cat, data: { labels: C, datasets: [{ label: 'Dépenses', data: C.map(c => s.byCat[c] || 0), backgroundColor: C.map(colorOf), borderColor: bc, borderWidth: 2, borderRadius: chartTypes.cat === 'bar' ? 8 : 0 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: chartTypes.cat === 'doughnut', position: 'bottom' } }, scales: chartTypes.cat === 'bar' ? { y: { beginAtZero: true }, x: { ticks: { maxRotation: 60, minRotation: 40, font: { size: 10 } } } } : {} } });
+}
+function renderOps() {
+  const L = D().transactions.filter(t => (!filt.q || norm(t.label).includes(norm(filt.q))) && (filt.month === 'ALL' || t.date.startsWith(filt.month)) && (filt.tag === 'ALL' || (t.tag || 'Non défini') === filt.tag) && (filt.cat === 'ALL' || (t.category || 'Non défini') === filt.cat)).sort((a, b) => b.date.localeCompare(a.date));
+  const total = L.reduce((a, t) => a + t.amount, 0);
+  $('#main').innerHTML = `<label class="k-search">🔎<input id="fq" value="${esc(filt.q)}" placeholder="Rechercher un libellé…"></label>
+    <div class="k-grid3"><select id="fm" class="k-chip"><option value="ALL">Tous les mois</option>${months().map(m => `<option value="${m}" ${filt.month === m ? 'selected' : ''}>${monthLbl(m)}</option>`).join('')}</select>
+    <select id="ft" class="k-chip"><option value="ALL">Tous les tags</option>${[...TAGS, 'Non défini'].map(t => `<option ${filt.tag === t ? 'selected' : ''}>${t}</option>`).join('')}</select>
+    <select id="fc" class="k-chip"><option value="ALL">Catégories</option>${[...cats(), 'Non défini'].map(c => `<option ${filt.cat === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></div>
+    <p class="k-hint">${L.length} opération${L.length > 1 ? 's' : ''} · total ${eur(total)}</p>
+    ${L.length ? `<div class="k-card flush">${L.slice(0, 400).map(txRow).join('')}</div>` : '<div class="k-empty">Aucune opération. Importe un relevé CSV avec ＋.</div>'}`;
+  const fq = $('#fq'); fq.oninput = () => { filt.q = fq.value; clearTimeout(fq._t); fq._t = setTimeout(() => { const p = fq.selectionStart; renderOps(); const n = $('#fq'); n.focus(); n.setSelectionRange(p, p); }, 250); };
+  $('#fm').onchange = e => { filt.month = e.target.value; renderOps(); };
+  $('#ft').onchange = e => { filt.tag = e.target.value; renderOps(); };
+  $('#fc').onchange = e => { filt.cat = e.target.value; renderOps(); };
+  $$('[data-tx]').forEach(b => b.onclick = () => editTx(b.dataset.tx));
+}
+function renderMonths() {
+  const M = [...months()].reverse();
+  const rows = M.map(m => { const s = sums(D().transactions.filter(t => t.date.startsWith(m))); return { m, ...s, tot: s.inev + s.ev }; });
+  $('#main').innerHTML = `<div class="k-card"><div class="card-h"><h3>Évolution des dépenses</h3><div class="seg" data-ch="month"><button data-ty="bar" class="${chartTypes.month === 'bar' ? 'on' : ''}">▥</button><button data-ty="line" class="${chartTypes.month === 'line' ? 'on' : ''}">⟋</button></div></div><div class="chart-box"><canvas id="cMon"></canvas></div></div>
+    <div class="k-card" style="overflow-x:auto"><table class="mt"><tr><th>Mois</th><th>Revenus</th><th>Inév.</th><th>Év.</th><th>Solde</th><th>% inév.</th></tr>
+    ${[...rows].reverse().map(r => `<tr><td><b>${monthLbl(r.m)}</b></td><td style="color:var(--ok)">${eur(r.rev, 0)}</td><td style="color:#e0364a">${eur(r.inev, 0)}</td><td style="color:var(--ok)">${eur(r.ev, 0)}</td><td><b style="color:${r.solde < 0 ? 'var(--bad)' : 'var(--ok)'}">${eur(r.solde, 0)}</b></td><td>${r.tot ? Math.round(r.inev / r.tot * 100) : 0} %</td></tr>`).join('') || '<tr><td colspan="6" class="k-hint">Aucune donnée.</td></tr>'}</table></div>`;
+  $$('[data-ch] button').forEach(b => b.onclick = () => { chartTypes.month = b.dataset.ty; sound('click'); renderMonths(); });
+  if (!chartDefaults()) return;
+  mk('cMon', { type: chartTypes.month, data: { labels: rows.map(r => monthLbl(r.m)), datasets: [{ label: 'Inévitable', data: rows.map(r => r.inev), backgroundColor: '#ff8fa3', borderColor: '#ff8fa3', borderRadius: 6, tension: .3 }, { label: 'Évitable', data: rows.map(r => r.ev), backgroundColor: '#80ed99', borderColor: '#80ed99', borderRadius: 6, tension: .3 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true } } } });
+}
+
+/* ======================= Achats selon le solde ======================= */
+function marge() {
+  const M = months();
+  const cur = todayISO().slice(0, 7);
+  const ref = period !== 'ALL' ? period : (M.find(m => m < cur) || M[0]);
+  if (!ref) return { ref: null, solde: 0, dispo: 0 };
+  const solde = sums(D().transactions.filter(t => t.date.startsWith(ref))).solde;
+  const spentWishes = D().wishes.filter(w => (w.bought || '').startsWith(cur)).reduce((a, w) => a + w.cost, 0);
+  return { ref, solde, spent: spentWishes, dispo: Math.max(0, solde - (S().cushion || 0) - spentWishes) };
+}
+function plan(dispo) {
+  // Les plus importants d'abord, puis les moins chers ; 5 suggestions au maximum
+  const open = D().wishes.filter(w => !w.bought).sort((a, b) => b.prio - a.prio || a.cost - b.cost);
+  const pick = []; let left = dispo;
+  for (const w of open) { if (pick.length >= 5) break; if (w.cost <= left) { pick.push(w); left -= w.cost; } }
+  // Objectif d'épargne : l'envie la plus importante qui ne rentre pas encore
+  const goal = open.find(w => !pick.includes(w) && w.prio >= (pick[0]?.prio || 0));
+  return { pick, left, goal };
+}
+function renderWishes() {
+  const m = marge(), { pick, left, goal } = plan(m.dispo);
+  const open = D().wishes.filter(w => !w.bought), done = D().wishes.filter(w => w.bought);
+  const total = open.reduce((a, w) => a + w.cost, 0);
+  const tip = !m.ref ? 'Importe d\'abord un relevé : je regarderai le solde du mois pour te dire quels achats sont possibles.'
+    : m.dispo <= 0 ? `Solde de ${monthLbl(m.ref).toLowerCase()} : ${eur(m.solde)}. Après la réserve de ${eur(S().cushion)}, pas d'achat ce mois-ci. On patiente !`
+    : pick.length ? `Avec ${eur(m.dispo)} disponibles, tu peux t'offrir ${pick.length} achat${pick.length > 1 ? 's' : ''} parmi les plus importants.` : `${eur(m.dispo)} disponibles, mais aucun achat de la liste ne rentre dedans pour l'instant.`;
+  const row = (w, sel) => `<button class="k-row ${sel ? 'wish-ok' : ''}" data-w="${w.id}"><span class="k-main"><b>${sel ? '✓ ' : ''}${esc(w.name)}</b><small><span class="stars">${'★'.repeat(w.prio)}${'☆'.repeat(5 - w.prio)}</span>${w.birth ? ' · 🍼 liste naissance' : ''}${w.bought ? ' · acheté le ' + frDate(w.bought) : ''}</small></span><span class="amt">${eur(w.cost, w.cost % 1 ? 2 : 0)}</span></button>`;
+  $('#main').innerHTML = bubble(esc(tip)) + periodSel() + `
+    <div class="k-grid3"><div class="k-stat"><b>${eur(m.solde, 0)}</b><span>solde ${m.ref ? monthLbl(m.ref).toLowerCase() : ''}</span></div><div class="k-stat"><b>${eur(S().cushion || 0, 0)}</b><span>réserve gardée</span></div><div class="k-stat"><b>${eur(m.dispo, 0)}</b><span>disponible</span></div></div>
+    ${pick.length ? `<div class="k-sec acc">Ce mois-ci, tu peux t'offrir</div><div class="k-card flush">${pick.map(w => row(w, true)).join('')}<div class="k-row" style="cursor:default"><span class="k-main"><b>Reste après ces achats</b></span><span class="amt">${eur(left, 0)}</span></div></div>` : ''}
+    ${goal ? `<div class="k-card"><b>🎯 Objectif : ${esc(goal.name)}</b><div class="k-hint" style="margin-top:4px">${eur(goal.cost, 0)} · priorité ${goal.prio}${m.solde - (S().cushion || 0) > 0 ? ` · environ ${Math.ceil(goal.cost / (m.solde - (S().cushion || 0)))} mois d'économies au rythme de ${monthLbl(m.ref).toLowerCase()}` : ''}</div></div>` : ''}
+    <div class="k-sec">Liste d'envies · ${open.length} · ${eur(total, 0)}</div>
+    ${[5, 4, 3, 2, 1].map(p => { const L = open.filter(w => w.prio === p).sort((a, b) => a.cost - b.cost); return L.length ? `<div class="k-hint" style="margin:8px 2px 4px">Priorité ${p} · ${eur(L.reduce((a, w) => a + w.cost, 0), 0)}</div><div class="k-card flush">${L.map(w => row(w, false)).join('')}</div>` : ''; }).join('')}
+    ${done.length ? `<details class="k-more"><summary>Déjà achetés (${done.length})</summary><div class="k-card flush">${done.map(w => row(w)).join('')}</div></details>` : ''}
+    <button class="k-btn ghost block" id="wAdd">＋ Ajouter une envie</button>`;
+  bindPeriod();
+  $$('[data-w]').forEach(b => b.onclick = () => editWish(D().wishes.find(w => w.id === b.dataset.w)));
+  $('#wAdd').onclick = () => editWish(null);
+}
+function editWish(w) {
+  const isNew = !w; w = w ? { ...w } : { id: uid(), name: '', cost: 0, prio: 3, birth: false, links: [], bought: '', createdAt: now() };
+  const body = openSheet(isNew ? 'Nouvelle envie' : w.name, `<div class="k-field"><label>Nom</label><input id="wN" value="${esc(w.name)}"></div>
+    <div class="k-grid2"><div class="k-field"><label>Coût (€)</label><input id="wC" inputmode="decimal" value="${w.cost || ''}"></div><div class="k-field"><label>Priorité</label><select id="wP">${[5, 4, 3, 2, 1].map(p => `<option value="${p}" ${w.prio === p ? 'selected' : ''}>${'★'.repeat(p)} (${p})</option>`).join('')}</select></div></div>
+    <label class="k-switch">Liste de naissance 🍼 <input type="checkbox" id="wB" ${w.birth ? 'checked' : ''}></label>
+    <div class="k-field"><label>Liens (un par ligne)</label><textarea id="wL">${esc((w.links || []).join('\n'))}</textarea></div>
+    ${(w.links || []).length ? `<div class="k-btns" style="margin-bottom:10px">${w.links.map((l, i) => `<a class="k-btn sm line" href="${esc(l)}" target="_blank" rel="noopener">🔗 Lien ${i + 1} · ${esc(new URL(l).hostname.replace('www.', ''))}</a>`).join('')}</div>` : ''}
+    <div class="k-btns"><button class="k-btn" id="wOk">Enregistrer</button>${isNew ? '' : `<button class="k-btn ghost" id="wBuy">${w.bought ? '↩︎ Pas acheté' : '✓ Acheté'}</button>`}</div>
+    ${isNew ? '' : '<button class="k-btn danger block" id="wDel" style="margin-top:8px">Supprimer</button>'}`);
+  const save = () => { Object.assign(w, { name: $('#wN', body).value.trim(), cost: parseFloat($('#wC', body).value.replace(',', '.')) || 0, prio: +$('#wP', body).value, birth: $('#wB', body).checked, links: $('#wL', body).value.split(/\s+/).filter(u => /^https?:\/\//.test(u)), updatedAt: now() }); const i = D().wishes.findIndex(x => x.id === w.id); if (i >= 0) D().wishes[i] = w; else D().wishes.push(w); };
+  $('#wOk', body).onclick = () => { if (!$('#wN', body).value.trim()) return toast('Indique un nom'); save(); store.save(); sound('pop'); closeSheet(); renderAll(); };
+  $('#wBuy', body) && ($('#wBuy', body).onclick = () => { save(); w.bought = w.bought ? '' : todayISO(); store.save(); sound('success'); closeSheet(); renderAll(); });
+  $('#wDel', body) && ($('#wDel', body).onclick = () => { if (confirm('Supprimer cette envie ?')) { D().wishes = D().wishes.filter(x => x.id !== w.id); D().tombstones[w.id] = now(); store.save(); closeSheet(); renderAll(); } });
+}
+
+/* ======================= Opération ======================= */
+function editTx(id) {
+  const isNew = !id;
+  const t = isNew ? { id: uid(), date: todayISO(), label: '', amount: 0, category: 'Non défini', tag: 'Non défini', createdAt: now() } : { ...D().transactions.find(x => x.id === id) };
+  const same = isNew ? 0 : D().transactions.filter(x => keyOf(x.label) === keyOf(t.label) && x.id !== t.id).length;
+  const body = openSheet(isNew ? 'Nouvelle opération' : 'Opération', `
+    <div class="k-grid2"><div class="k-field"><label>Date</label><input id="eD" type="date" value="${t.date}"></div><div class="k-field"><label>Montant (€, négatif = dépense)</label><input id="eA" inputmode="decimal" value="${t.amount || ''}"></div></div>
+    <div class="k-field"><label>Libellé</label><input id="eL" value="${esc(t.label)}"></div>
+    <div class="k-field"><label>Catégorie</label><select id="eC">${['Non défini', ...cats()].map(c => `<option ${t.category === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></div>
+    <div class="k-field"><label>Tag</label><select id="eT">${[...TAGS, 'Non défini'].map(x => `<option ${t.tag === x ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
+    ${same ? `<label class="k-switch">Appliquer aux ${same} opérations semblables <input type="checkbox" id="eS" checked></label>` : ''}
+    ${t.docLink ? `<a class="k-btn line block" href="${t.docLink}" style="margin-bottom:8px">📎 Voir le document dans Paperasse</a>` : ''}
+    ${t.auto ? `<p class="k-hint">✨ Classée automatiquement (${{ regle: 'règle', appris: 'appris de tes choix', ia: 'IA', paperasse: 'Paperasse' }[t.auto] || t.auto})</p>` : ''}
+    <div class="k-btns"><button class="k-btn" id="eOk">Enregistrer</button>${isNew ? '' : '<button class="k-btn danger" id="eDel">Supprimer</button>'}</div>`);
+  $('#eOk', body).onclick = () => {
+    Object.assign(t, { date: $('#eD', body).value, label: $('#eL', body).value.trim(), amount: parseFloat($('#eA', body).value.replace(',', '.')) || 0, category: $('#eC', body).value, tag: $('#eT', body).value, auto: null, checked: true, updatedAt: now() });
+    if (!t.label || !t.amount) return toast('Libellé et montant requis');
+    const i = D().transactions.findIndex(x => x.id === t.id); if (i >= 0) D().transactions[i] = t; else D().transactions.push(t);
+    if ($('#eS', body)?.checked) propagate(t);
+    learn(); store.save(); sound('pop'); closeSheet(); renderAll();
+  };
+  $('#eDel', body) && ($('#eDel', body).onclick = () => { D().transactions = D().transactions.filter(x => x.id !== t.id); D().tombstones[t.id] = now(); store.save(); sound('click'); closeSheet(); renderAll(); });
+}
+function propagate(t, onlyCat, onlyTag) {
+  const k = keyOf(t.label);
+  for (const x of D().transactions) if (x.id !== t.id && (x.label.toLowerCase() === t.label.toLowerCase() || keyOf(x.label) === k)) { if (!onlyTag) x.category = t.category; if (!onlyCat) x.tag = t.tag; x.auto = null; x.checked = true; x.updatedAt = now(); }
+}
+
+/* ======================= Pas-à-pas ======================= */
+let wq = [], wi = 0;
+function startWizard(scope, autoOnly = false) {
+  const T = D().transactions;
+  wq = T.filter(t => (scope === 'ALL' || t.date.startsWith(scope)) && (autoOnly ? t.auto && !t.checked : unclassified(t))).sort((a, b) => b.date.localeCompare(a.date)).map(t => t.id);
+  if (!wq.length) return toast('Tout est déjà classé sur cette période 🎉');
+  wi = 0; S().wizard = null; sound('click'); wizStep();
+}
+function wizStep() {
+  const T = D().transactions;
+  if (wi >= wq.length) { S().wizard = null; learn(); saveSettings(); sound('success'); const b = openSheet('Pas-à-pas', `<div style="text-align:center;padding:10px">${bubble('Bravo, tout est rangé ! Je retourne dormir sur le clavier.')}<button class="k-btn block" id="wEnd">Fermer</button></div>`); $('#wEnd', b).onclick = () => { closeSheet(); renderAll(); }; return; }
+  const t = T.find(x => x.id === wq[wi]); if (!t) { wi++; return wizStep(); }
+  const sug = unclassified(t) ? suggest(t) : null;
+  const same = T.filter(x => x.label.toLowerCase() === t.label.toLowerCase()).length;
+  const body = openSheet(`Pas-à-pas · ${wi + 1} / ${wq.length}`, `
+    <div class="wiz-tx"><div><div class="k-hint">${frDate(t.date)}</div><b>${esc(t.label)}</b>${same > 1 ? `<div class="k-tag" style="margin-top:4px">${same} identiques</div>` : ''}${sug ? `<div class="k-hint" style="margin-top:4px">✨ Suggestion : ${esc(sug.category)} · ${esc(sug.tag)}</div>` : ''}</div><b class="amt ${t.amount < 0 ? 'neg' : 'pos'}" style="font-size:18px">${eur(t.amount)}</b></div>
+    <div class="k-hint" style="font-weight:700;margin-bottom:6px">1. OBLIGATION</div>
+    <div class="choice" id="wTag">${TAGS.map(x => `<button data-v="${x}" class="${t.tag === x ? 'on' : ''} ${sug?.tag === x && t.tag !== x ? 'sug' : ''}"><span class="cdot" style="background:${{ 'Inévitable': '#ff8fa3', 'Évitable': '#80ed99', 'Non applicable': '#90e0ef' }[x]}"></span>${x}</button>`).join('')}</div>
+    <div class="k-hint" style="font-weight:700;margin:14px 0 6px;display:flex;justify-content:space-between">2. CATÉGORIE <a href="#" id="wNewC">＋ Nouvelle</a></div>
+    <div class="choice" id="wCat">${cats().map(c => `<button data-v="${esc(c)}" class="${t.category === c ? 'on' : ''} ${sug?.category === c && t.category !== c ? 'sug' : ''}"><span class="cdot" style="background:${colorOf(c)}"></span>${esc(c)}</button>`).join('')}</div>
+    <div class="k-btns" style="margin-top:16px"><button class="k-btn line" id="wPrev" ${wi ? '' : 'disabled'}>‹ Précédent</button>${sug ? '<button class="k-btn ghost" id="wSug">✨ Suggestion</button>' : ''}<button class="k-btn" id="wNext">Suivant ›</button></div>
+    <button class="k-btn line block" id="wPause" style="margin-top:8px">⏸ Pause (reprendre plus tard)</button>`);
+  const apply = (field, v) => { t[field] = v; t.auto = null; t.checked = true; t.updatedAt = now(); propagate(t, field === 'category', field === 'tag'); store.save(); sound('pop'); wizStep(); };
+  $$('#wTag button', body).forEach(b => b.onclick = () => apply('tag', b.dataset.v));
+  $$('#wCat button', body).forEach(b => b.onclick = () => apply('category', b.dataset.v));
+  $('#wSug', body) && ($('#wSug', body).onclick = () => { t.category = sug.category; t.tag = sug.tag; t.checked = true; t.updatedAt = now(); propagate(t); store.save(); sound('pop'); wi++; wizStep(); });
+  $('#wPrev', body).onclick = () => { wi--; sound('click'); wizStep(); };
+  $('#wNext', body).onclick = () => { wi++; sound('click'); wizStep(); };
+  $('#wPause', body).onclick = () => { S().wizard = { queueIds: wq, index: wi }; saveSettings(); sound('click'); closeSheet(); renderAll(); toast('Session en pause'); };
+  $('#wNewC', body).onclick = e => { e.preventDefault(); const n = prompt('Nom de la nouvelle catégorie :'); if (n && n.trim() && !cats().includes(n.trim())) { cats().push(n.trim()); S().colors[n.trim()] = '#' + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0'); saveSettings(); wizStep(); } };
+}
+function wizardMenu() {
+  const w = S().wizard;
+  const body = openSheet('Pas-à-pas', `${w ? `<div class="k-card"><b>⏸ Session en pause (${w.index + 1} / ${w.queueIds.length})</b><button class="k-btn block" id="wRes" style="margin-top:8px">Reprendre</button></div>` : ''}
+    <div class="k-field"><label>Période à classer</label><select id="wM"><option value="ALL">Toutes les périodes (non classées)</option>${months().map(m => `<option value="${m}">${monthLbl(m)}</option>`).join('')}</select></div>
+    <button class="k-btn block" id="wGo">Démarrer</button>`);
+  $('#wRes', body) && ($('#wRes', body).onclick = () => { wq = w.queueIds; wi = w.index; wizStep(); });
+  $('#wGo', body).onclick = () => startWizard($('#wM', body).value);
+}
+
+/* ======================= Catégories ======================= */
+function catsSheet() {
+  const body = openSheet('Catégories', `<div class="k-grid2" style="grid-template-columns:auto 1fr auto;align-items:center"><input type="color" id="nC" value="#ff4f5e" style="width:42px;height:42px;border:0;background:none"><div class="k-field" style="margin:0"><input id="nN" placeholder="Nouvelle catégorie…"></div><button class="k-btn" id="nOk">Ajouter</button></div>
+    <div class="k-card flush" style="margin-top:12px">${cats().map((c, i) => `<div class="k-row" style="cursor:default"><input type="color" value="${colorOf(c)}" data-col="${i}" style="width:30px;height:30px;border:0;background:none"><span class="k-main"><b>${esc(c)}</b><small>${D().transactions.filter(t => t.category === c).length} opérations</small></span><button class="k-btn sm line" data-ren="${i}">✏️</button><button class="k-btn sm danger" data-del="${i}">🗑</button></div>`).join('')}</div>`);
+  $('#nOk', body).onclick = () => { const n = $('#nN', body).value.trim(); if (!n || cats().includes(n)) return; cats().push(n); S().colors[n] = $('#nC', body).value; saveSettings(); sound('pop'); catsSheet(); };
+  $$('[data-col]', body).forEach(inp => inp.onchange = () => { S().colors[cats()[+inp.dataset.col]] = inp.value; saveSettings(); renderAll(); });
+  $$('[data-ren]', body).forEach(b => b.onclick = () => { const i = +b.dataset.ren, o = cats()[i], n = prompt('Nouveau nom :', o)?.trim(); if (!n || n === o) return; cats()[i] = n; S().colors[n] = S().colors[o]; delete S().colors[o]; D().transactions.forEach(t => { if (t.category === o) { t.category = n; t.updatedAt = now(); } }); saveSettings(); catsSheet(); renderAll(); });
+  $$('[data-del]', body).forEach(b => b.onclick = () => { const i = +b.dataset.del, c = cats()[i]; if (!confirm(`Supprimer « ${c} » ? Ses opérations repasseront en « Non défini ».`)) return; cats().splice(i, 1); delete S().colors[c]; D().transactions.forEach(t => { if (t.category === c) { t.category = 'Non défini'; t.updatedAt = now(); } }); saveSettings(); catsSheet(); renderAll(); });
+}
+
+/* ======================= Sauvegardes ======================= */
+function backup() {
+  download(`chacha_sauvegarde_${todayISO()}.json`, JSON.stringify({ transactions: D().transactions, categories: cats(), categoryColors: S().colors, wishes: D().wishes, version: '2.0', exportDate: new Date().toISOString() }, null, 1));
+}
+async function restore() {
+  const [f] = await pickFiles({ accept: '.json,application/json' }); if (!f) return;
+  try {
+    const j = JSON.parse(await f.text());
+    if (!Array.isArray(j.transactions)) throw new Error('format');
+    if (!confirm(`Importer ${j.transactions.length} opérations ? Elles seront fusionnées avec les tiennes (sans doublons).`)) return;
+    const T = D().transactions; let n = 0;
+    for (const o of j.transactions) { const t = o.createdAt ? o : fromOld(o); if (!T.some(x => x.id === t.id || (x.date === t.date && x.label === t.label && Math.abs(x.amount - t.amount) < .001))) { T.push(t); n++; } }
+    if (Array.isArray(j.categories)) for (const c of j.categories) if (!cats().includes(c)) cats().push(c);
+    if (j.categoryColors) S().colors = { ...S().colors, ...j.categoryColors };
+    if (Array.isArray(j.wishes)) for (const w of j.wishes) if (!D().wishes.some(x => x.id === w.id)) D().wishes.push(w);
+    learn(); saveSettings(); sound('success'); renderAll(); toast(`${n} opérations restaurées ✓`);
+  } catch { toast('Fichier de sauvegarde invalide'); }
+}
+function addMenu() {
+  const body = openSheet('Que veux-tu faire ?', `<div class="menu">
+    <button data-m="csv"><span>📄</span><span>Importer un relevé CSV<small>Classement automatique inclus</small></span></button>
+    <button data-m="wiz"><span>⚡</span><span>Pas-à-pas<small>Classer les opérations une par une</small></span></button>
+    <button data-m="new"><span>✍️</span><span>Saisir une opération<small>Espèces, chèque…</small></span></button>
+    <button data-m="cat"><span>🎨</span><span>Catégories<small>Ajouter, renommer, couleurs</small></span></button>
+    <button data-m="bak"><span>💾</span><span>Exporter une sauvegarde</span></button>
+    <button data-m="res"><span>📂</span><span>Restaurer une sauvegarde<small>Compatible avec l'ancienne appli</small></span></button></div>`);
+  $$('[data-m]', body).forEach(b => b.onclick = () => ({ csv: () => { closeSheet(); importCSV(); }, wiz: wizardMenu, new: () => editTx(null), cat: catsSheet, bak: backup, res: () => { closeSheet(); restore(); } })[b.dataset.m]());
+}
+function settings() {
+  openCommonSettings(`<div class="k-sec acc">Cha-cha</div><div class="k-field"><label>Réserve à garder chaque mois avant les achats (€)</label><input id="sC" type="number" value="${S().cushion || 0}"></div>`,
+    (body, saving) => { if (saving) { S().cushion = parseFloat($('#sC', body).value) || 0; saveSettings(); } });
+}
+addEventListener('k-settings', () => { store.sync(); renderAll(); });
+
+/* ======================= Rendu global ======================= */
+function renderAll() {
+  renderHero();
+  ({ dash: renderDash, ops: renderOps, wish: renderWishes, months: renderMonths })[tab]();
+  const cur = todayISO().slice(0, 7), s = sums(D().transactions.filter(t => t.date.startsWith(cur)));
+  const un = D().transactions.filter(unclassified).length;
+  publishSummary('budget', { line: D().transactions.length ? `Ce mois : ${eur(s.inev + s.ev, 0)} dépensés${un ? ` · ${un} à classer` : ''}` : 'Importe ton premier relevé', alert: false });
+}
+const n = nav([{ id: 'dash', label: 'Tableau' }, { id: 'ops', label: 'Opérations' }, { id: 'wish', label: 'Achats' }, { id: 'months', label: 'Mois' }], { active: 'dash', fab: true });
+n.onclick = e => { const b = e.target.closest('button'); if (!b) return; if (b.classList.contains('k-fab')) return addMenu(); tab = b.dataset.tab; $$('[data-tab]', n).forEach(x => x.classList.toggle('on', x === b)); sound('click'); renderAll(); scrollTo(0, 0); };
+renderAll(); store.sync(); loadUpcoming();
+</script>
+</body>
+</html>

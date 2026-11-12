@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="ui/kit.css">
+<title>Plantes</title>
+<style>
+.pre{white-space:pre-wrap;font-size:13.5px;line-height:1.5}
+.month{font-weight:800;font-size:13px;color:var(--mut);margin:14px 2px 6px;text-transform:capitalize}
+</style>
+</head>
+<body>
+<header id="hero"></header>
+<main class="k-wrap" id="main"></main>
+<script type="module">
+import { initApp, publishSummary, hero, DocSync, read, write, esc, $, $$, uid, now, todayISO, isISO, frDate, daysTo, addMonths, norm, openSheet, closeSheet, toast, bubble, openCommonSettings, nav } from './ui/kit.js';
+initApp('plantes');
+
+/* ---------- Données de départ (export « plantes ») ---------- */
+// Données de départ : rangées dans le dépôt privé (JSON_PLANTES.json), jamais dans ce code public.
+const seed = () => ({ app: 'plantes', schema: 1, items: [], tombstones: {}, settings: {}, settingsAt: 0, updatedAt: 0 });
+const store = new DocSync({ key: 'plantes.data.v1', path: 'JSON_PLANTES.json', label: 'Plantes', empty: seed, onRemote: () => render() });
+const D = () => store.data;
+if (!read('plantes.data.v1')) store.save();
+
+const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+const ym = iso => iso?.slice(0, 7) || '';
+const thisYM = () => todayISO().slice(0, 7);
+const state = p => !isISO(p.nextCut) ? 'none' : ym(p.nextCut) < thisYM() ? 'late' : ym(p.nextCut) === thisYM() ? 'now' : 'later';
+const monthLbl = iso => isISO(iso) ? MOIS[+iso.slice(5, 7) - 1] + ' ' + iso.slice(0, 4) : '';
+const TYPES = { Arbre: '🌳', Arbuste: '🌿', Fruits: '🍇', Fleurs: '🌸' };
+
+let q = '';
+function render() {
+  const its = D().items, late = its.filter(p => state(p) === 'late'), nowL = its.filter(p => state(p) === 'now');
+  const next = its.filter(p => state(p) === 'later').sort((a, b) => a.nextCut.localeCompare(b.nextCut))[0];
+  const feedNow = new Date().getMonth() + 1 === (D().settings.feedMonth || 3);
+  hero($('#hero'), {
+    app: 'plantes', title: 'Plantes', sub: '‹ Accueil · jardin', subHref: './index.html',
+    actions: store.pill() + `<button class="k-ibtn" id="set" aria-label="Réglages">⚙︎</button>`,
+    rings: [
+      { label: 'Ce mois-ci', value: nowL.length },
+      { label: 'En retard', value: late.length, color: late.length ? '#ff4f5e' : undefined },
+      { label: 'Prochaine', html: `<b style="font-size:12px;color:var(--acc)">${next ? MOIS[+next.nextCut.slice(5, 7) - 1].slice(0, 4) + '.' : '—'}</b>` },
+      { label: 'Plantes', value: its.length },
+    ],
+    after: el => { store.bindPills(el); $('#set', el).onclick = settings; }
+  });
+  const tip = late.length ? `${late.length} taille${late.length > 1 ? 's' : ''} en retard : ${late.slice(0, 3).map(p => p.name.toLowerCase()).join(', ')}.`
+    : nowL.length ? `C'est le mois de tailler : ${nowL.map(p => p.name.toLowerCase()).join(', ')}. Sécateur en main !`
+    : feedNow ? `C'est le moment de nourrir le jardin (compost, sang et corne). Moi je préfère les croquettes.`
+    : next ? `Prochaine taille : ${next.name.toLowerCase()} en ${monthLbl(next.nextCut)}.` : 'Rien à faire au jardin pour le moment.';
+  const list = [...its].filter(p => !q || norm([p.name, p.type, p.place, p.desc].join(' ')).includes(norm(q))).sort((a, b) => (a.nextCut || '9').localeCompare(b.nextCut || '9'));
+  const groups = {}; list.forEach(p => { const k = state(p) === 'late' ? 'En retard' : state(p) === 'none' ? 'Sans date' : monthLbl(p.nextCut); (groups[k] ||= []).push(p); });
+  const row = p => `<button class="k-row" data-id="${p.id}"><span class="k-ico">${TYPES[p.type] || '🌱'}</span><span class="k-main"><b>${esc(p.name)}</b><small>${esc(p.place || p.type || '')}</small></span>${state(p) === 'late' ? '<span class="k-tag bad">En retard</span>' : state(p) === 'now' ? '<span class="k-tag warn">Ce mois-ci</span>' : ''}</button>`;
+  $('#main').innerHTML = bubble(esc(tip)) + `<label class="k-search">🔎<input id="q" value="${esc(q)}" placeholder="Nom, emplacement, type…"></label>` +
+    (feedNow ? `<div class="k-card"><b>🌱 Mois de l'engrais</b><div class="k-hint" style="margin-top:4px">${[...new Set(its.map(p => p.nutrients).filter(Boolean))].map(n => `${esc(n)} : ${its.filter(p => p.nutrients === n).map(p => esc(p.name)).join(', ')}`).join('<br>')}</div></div>` : '') +
+    Object.entries(groups).map(([k, L]) => `<div class="month">${esc(k)}</div><div class="k-card flush">${L.map(row).join('')}</div>`).join('');
+  $$('[data-id]').forEach(b => b.onclick = () => openPlant(b.dataset.id));
+  const qi = $('#q'); qi.oninput = () => { q = qi.value; clearTimeout(qi._t); qi._t = setTimeout(() => { const p = qi.selectionStart; render(); const n = $('#q'); n.focus(); n.setSelectionRange(p, p); }, 250); };
+  const u = late[0] || nowL[0];
+  publishSummary('plantes', { line: late.length ? `${late.length} taille${late.length > 1 ? 's' : ''} en retard` : nowL.length ? `${nowL.length} à tailler ce mois-ci` : next ? `Prochaine taille : ${next.name} (${monthLbl(next.nextCut)})` : 'Rien à faire', alert: !!late.length,
+    urgent: u ? { title: 'Tailler : ' + u.name, sub: u.place || '', k: 'Jardin', late: state(u) === 'late' } : null });
+}
+
+function openPlant(id) {
+  const p = D().items.find(x => x.id === id); if (!p) return;
+  const body = openSheet(p.name, `
+    <span class="k-tag">${TYPES[p.type] || '🌱'} ${esc(p.type || 'Plante')}</span> ${state(p) === 'late' ? '<span class="k-tag bad">Taille en retard</span>' : state(p) === 'now' ? '<span class="k-tag warn">À tailler ce mois-ci</span>' : ''}
+    <div class="k-card" style="margin-top:10px">
+      ${p.desc ? `<p style="margin-top:0">${esc(p.desc)}</p>` : ''}
+      <div class="k-hint">Emplacement</div><b>${esc(p.place || '—')}</b>
+      <div class="k-grid2" style="margin-top:8px"><div><div class="k-hint">Plantée le</div><b>${frDate(p.planted) || '—'}</b></div><div><div class="k-hint">Prochaine taille</div><b>${monthLbl(p.nextCut) || '—'}</b></div></div>
+      ${p.nutrients ? `<div class="k-hint" style="margin-top:8px">Nutriments</div><b>${esc(p.nutrients)}</b>` : ''}
+    </div>
+    ${p.howCut ? `<div class="k-sec acc">Comment tailler</div><div class="k-card pre">${esc(p.howCut)}</div>` : ''}
+    ${p.cuts?.length ? `<div class="k-sec">Historique</div><div class="k-card flush">${[...p.cuts].reverse().map(c => `<div class="k-row"><span class="k-main"><b>✂️ Taillée</b><small>${frDate(c)}</small></span></div>`).join('')}</div>` : ''}
+    <div class="k-btns" style="margin-top:10px"><button class="k-btn" id="cut">✂️ Taille faite</button><button class="k-btn ghost" id="feed">🌱 Nourrie</button></div>
+    <div class="k-btns" style="margin-top:8px"><button class="k-btn line" id="edit">Modifier</button><button class="k-btn danger" id="del">Supprimer</button></div>`);
+  $('#cut', body).onclick = () => { p.cuts = [...(p.cuts || []), todayISO()]; const base = isISO(p.nextCut) && p.nextCut > todayISO() ? p.nextCut : todayISO(); p.nextCut = addMonths(base.slice(0, 8) + '01', p.every || 12); p.updatedAt = now(); store.save(); closeSheet(); render(); toast(`Prochaine taille : ${monthLbl(p.nextCut)}`); };
+  $('#feed', body).onclick = () => { p.fed = [...(p.fed || []), todayISO()]; p.updatedAt = now(); store.save(); toast('Apport noté 🌱'); };
+  $('#edit', body).onclick = () => editPlant(p);
+  $('#del', body).onclick = () => { if (confirm(`Supprimer « ${p.name} » ?`)) { D().items = D().items.filter(x => x.id !== id); D().tombstones[id] = now(); store.save(); closeSheet(); render(); } };
+}
+function editPlant(p) {
+  const isNew = !p; p = p ? { ...p } : { id: uid(), name: '', type: '', place: '', desc: '', planted: '', nextCut: '', howCut: '', nutrients: '', every: 12, cuts: [], fed: [], createdAt: now() };
+  const f = (id, l, v, a = '') => `<div class="k-field"><label>${l}</label><input id="${id}" value="${esc(v)}" ${a}></div>`;
+  const body = openSheet(isNew ? 'Nouvelle plante' : 'Modifier', `${f('pN', 'Nom', p.name)}
+    <div class="k-grid2">${f('pT', 'Type', p.type, 'list="dlT"')}${f('pE', 'Tailler tous les (mois)', p.every || 12, 'type="number"')}</div><datalist id="dlT">${Object.keys(TYPES).map(t => `<option value="${t}">`).join('')}</datalist>
+    ${f('pP', 'Emplacement', p.place)}${f('pD', 'Description', p.desc)}
+    <div class="k-grid2">${f('pPl', 'Plantée le', p.planted, 'type="date"')}${f('pC', 'Prochaine taille', p.nextCut, 'type="date"')}</div>
+    ${f('pNu', 'Nutriments', p.nutrients, 'list="dlN"')}<datalist id="dlN">${[...new Set(D().items.map(x => x.nutrients).filter(Boolean))].map(n => `<option value="${esc(n)}">`).join('')}</datalist>
+    <div class="k-field"><label>Comment tailler</label><textarea id="pH" style="min-height:120px">${esc(p.howCut)}</textarea></div>
+    <button class="k-btn block" id="pOk">Enregistrer</button>`);
+  $('#pOk', body).onclick = () => { const v = id => $('#' + id, body).value.trim(); if (!v('pN')) return toast('Indique le nom');
+    Object.assign(p, { name: v('pN'), type: v('pT'), every: parseInt(v('pE')) || 12, place: v('pP'), desc: v('pD'), planted: v('pPl'), nextCut: v('pC'), nutrients: v('pNu'), howCut: $('#pH', body).value.trim(), updatedAt: now() });
+    const i = D().items.findIndex(x => x.id === p.id); if (i >= 0) D().items[i] = p; else D().items.push(p); store.save(); closeSheet(); render(); };
+}
+function settings() {
+  openCommonSettings(`<div class="k-sec acc">Jardin</div><div class="k-field"><label>Mois de l'engrais</label><select id="fm">${MOIS.map((m, i) => `<option value="${i + 1}" ${(D().settings.feedMonth || 3) === i + 1 ? 'selected' : ''}>${m}</option>`).join('')}</select></div>`,
+    (body, saving) => { if (saving) { D().settings.feedMonth = +$('#fm', body).value; D().settingsAt = now(); store.save(); } });
+}
+addEventListener('k-settings', () => { store.sync(); render(); });
+const n = nav([{ id: 'cal', label: 'Calendrier' }, { id: 'all', label: 'Recherche' }], { active: 'cal', fab: true });
+n.onclick = e => { const b = e.target.closest('button'); if (!b) return; if (b.classList.contains('k-fab')) return editPlant(null); if (b.dataset.tab === 'all') $('#q').focus(); else scrollTo({ top: 0, behavior: 'smooth' }); };
+render(); store.sync();
+</script>
+</body>
+</html>

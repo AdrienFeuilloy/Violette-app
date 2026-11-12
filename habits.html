@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="ui/kit.css">
+<title>Habits · Violette</title>
+<style>
+.outfit{display:grid;grid-template-columns:repeat(auto-fill,minmax(86px,1fr));gap:8px}
+.wear{background:var(--soft);border-radius:14px;padding:10px 6px;text-align:center}
+.wear svg{display:block;margin:0 auto 4px}
+.wear b{display:block;font-size:12px;line-height:1.2}
+.wear small{display:block;font-size:10.5px;color:var(--acc);font-weight:700}
+.card-h{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px}
+.card-h h3{margin:0;font-size:16px}
+.card-h .t{font-size:13px;font-weight:800;color:var(--acc)}
+.combo{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.slider-row{display:flex;align-items:center;gap:12px}
+.slider-row b{font-size:22px;font-weight:800;color:var(--acc);min-width:58px;text-align:right}
+.grid-ed{width:100%;border-collapse:collapse;font-size:11px}
+.grid-ed th,.grid-ed td{border-bottom:1px solid var(--line);padding:4px 2px;text-align:center}
+.grid-ed th:first-child,.grid-ed td:first-child{text-align:left;font-weight:700;white-space:nowrap}
+.grid-ed button{width:100%;min-width:28px;height:26px;border:1px solid var(--line);border-radius:7px;background:var(--card)}
+.grid-ed button.on{background:var(--acc);border-color:var(--acc)}
+.grid-ed tr.now td{background:var(--soft)}
+.wx{font-size:28px;line-height:1}
+</style>
+</head>
+<body>
+<header id="hero"></header>
+<main class="k-wrap" id="main"></main>
+<script type="module">
+import { initApp, publishSummary, hero, backLink, DocSync, read, write, esc, $, $$, todayISO, openSheet, closeSheet, toast, bubble, openCommonSettings, now } from './ui/kit.js';
+initApp('habits');
+
+/* ---------- Règles (reprises du tableau « Habits pour Violette ») ---------- */
+const DODO_R = { labels: ['<16', '16-17', '17-19', '19-21', '21-23', '23-25', '25-27', '27+'], bounds: [16, 17, 19, 21, 23, 25, 27] };
+const JOUR_R = { labels: ['<12', '12-15', '15-20', '20-23', '23-25', '25-27', '27-30', '30+'], bounds: [12, 15, 20, 23, 25, 27, 30] };
+const cells = (idx, note = '') => Object.fromEntries(idx.map(i => [i, note]));
+const DEFAULT_RULES = {
+  dodo: [
+    { id: 'bodyCourt', label: 'Body court', ic: 'bodyC', cells: cells([5, 6, 7]) },
+    { id: 'bodyLong', label: 'Body long', ic: 'bodyL', cells: cells([0, 1, 2, 3, 4]) },
+    { id: 'pyjama', label: 'Pyjama', ic: 'pyj', cells: cells([0, 1, 2, 3, 4, 5]) },
+    { id: 'turbL', label: 'Turbulette légère', ic: 'turb1', cells: cells([4, 6]) },
+    { id: 'turbM', label: 'Turbulette moyenne', ic: 'turb2', cells: cells([3]) },
+    { id: 'turbC', label: 'Turbulette chaude', ic: 'turb3', cells: cells([0, 1, 2]) },
+    { id: 'chauss', label: 'Chaussettes', ic: 'sock', cells: cells([0, 1]) },
+  ],
+  jour: [
+    { id: 'bodyCourt', label: 'Body court', ic: 'bodyC', cells: cells([3, 4, 5]) },
+    { id: 'bodyLong', label: 'Body long', ic: 'bodyL', cells: cells([0, 1, 2]) },
+    { id: 'pullC', label: 'Pull / gilet chaud', ic: 'pull2', cells: cells([0, 1]) },
+    { id: 'pullL', label: 'Pull / gilet léger', ic: 'pull1', cells: cells([2]) },
+    { id: 'bas', label: 'Bas', ic: 'pants', cells: { 0: 'chaud', 1: 'chaud', 2: 'chaud', 3: 'pantalon léger / collant', 4: 'short' } },
+    { id: 'robe', label: 'T-shirt / robe', ic: 'dress', cells: { 3: '', 4: '', 6: 'légère' } },
+    { id: 'chauss', label: 'Chaussettes', ic: 'sock', cells: cells([0, 1, 2]) },
+  ],
+  ext: [{ max: 12, couches: 3, chauss: true, bonnet: true }, { max: 15, couches: 2, chauss: true, bonnet: true }, { max: 20, couches: 1, chauss: true, bonnet: false }],
+  couches: [{ label: 'Combinaison', v: 3 }, { label: "Nid d'ange", v: 3 }, { label: 'Pull chaud', v: 2 }, { label: 'Écharpe', v: 2 }, { label: 'Pull léger', v: 1 }, { label: 'Porte-bébé', v: 1 }],
+};
+const DEFAULT_SETTINGS = { chambre: 19, maison: 21, loc: { lat: 48.8566, lon: 2.3522, name: 'Paris (lieu par défaut)' }, rules: DEFAULT_RULES };
+
+const store = new DocSync({ key: 'habits.data.v1', path: 'JSON_HABITS.json', label: 'Habits', lists: [], empty: () => ({ app: 'habits', schema: 1, settings: structuredClone(DEFAULT_SETTINGS), settingsAt: 0 }), onRemote: () => { render(); loadWeather(); } });
+// Les réglages absents (ex. fichier créé à la main) reprennent les valeurs par défaut
+const S = () => { const s = store.data.settings || (store.data.settings = {}); for (const k in DEFAULT_SETTINGS) if (s[k] == null) s[k] = structuredClone(DEFAULT_SETTINGS[k]); return s; };
+const saveSettings = () => { store.data.settingsAt = now(); store.save(); };
+
+/* ---------- Icônes de vêtements (formes simples, famille violette) ---------- */
+const INK = () => document.documentElement.dataset.theme === 'dark' ? '#f1ede4' : '#26233a';
+function garment(k, size = 40) {
+  const c = '#a678ff', d = '#7a3cf0', k2 = INK();
+  const P = {
+    bodyC: `<path d="M9 5h6l4 3-2 3-2-1v7l-3 3-3-3v-7l-2 1-2-3z" fill="${c}"/><circle cx="12" cy="18.5" r="1" fill="${k2}"/>`,
+    bodyL: `<path d="M9 5h6l5 3v6h-3v-4v7l-3 3h-4l-3-3v-7v4H4V8z" fill="${c}"/><circle cx="12" cy="18.5" r="1" fill="${k2}"/>`,
+    pyj: `<path d="M9 3h6l5 3v6h-3V9v13h-4v-7h-2v7H7V9v3H4V6z" fill="${c}"/><path d="M7 13h10M7 16h10" stroke="${d}" stroke-width="1.4"/>`,
+    turb1: `<path d="M8 4h8l1 4 1 12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L7 8z" fill="${c}" opacity=".45"/><path d="M9 4a3 3 0 0 0 6 0" fill="${k2}"/>`,
+    turb2: `<path d="M8 4h8l1 4 1 12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L7 8z" fill="${c}" opacity=".75"/><path d="M9 4a3 3 0 0 0 6 0" fill="${k2}"/>`,
+    turb3: `<path d="M8 4h8l1 4 1 12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L7 8z" fill="${d}"/><path d="M9 4a3 3 0 0 0 6 0" fill="${k2}"/><path d="M8 12h8M8 15.5h8" stroke="${c}" stroke-width="1.4"/>`,
+    sock: `<path d="M9 3h6v9l3 4a3 3 0 0 1-2.5 5H10a3 3 0 0 1-3-3v-6z" fill="${c}"/><rect x="9" y="3" width="6" height="3" rx="1" fill="${k2}"/>`,
+    pull1: `<path d="M8 4h8l5 3v9h-3v-6v11H6V10v6H3V7z" fill="${c}" opacity=".6"/><path d="M10 4a2 2 0 0 0 4 0" fill="${k2}"/>`,
+    pull2: `<path d="M8 4h8l5 3v9h-3v-6v11H6V10v6H3V7z" fill="${d}"/><path d="M10 4a2 2 0 0 0 4 0" fill="${k2}"/><path d="M6 15h12M6 18h12" stroke="${c}" stroke-width="1.4"/>`,
+    pants: `<path d="M7 3h10l1 18h-4l-2-11-2 11H6z" fill="${c}"/><rect x="7" y="3" width="10" height="2.5" rx="1" fill="${k2}"/>`,
+    dress: `<path d="M9 3h6l-1 5 6 13H4l6-13z" fill="${c}"/><circle cx="12" cy="14" r="1.2" fill="${k2}"/>`,
+    hat: `<path d="M5 17a7 7 0 0 1 14 0z" fill="${c}"/><rect x="4" y="16" width="16" height="3.5" rx="1.75" fill="${d}"/><circle cx="12" cy="7.5" r="2.4" fill="${k2}"/>`,
+  };
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24">${P[k] || P.bodyC}</svg>`;
+}
+
+/* ---------- Calculs ---------- */
+const idxOf = (t, R) => { let i = 0; while (i < R.bounds.length && t >= R.bounds[i]) i++; return i; };
+const pick = (items, i) => items.filter(it => it.cells && Object.prototype.hasOwnProperty.call(it.cells, i)).map(it => ({ ...it, note: it.cells[i] }));
+function extNeed(t) { return S().rules.ext.find(r => t < r.max) || { couches: 0, chauss: false, bonnet: false }; }
+function combos(n) {
+  const L = S().rules.couches, res = [];
+  const rec = (start, sum, cur) => {
+    if (sum === n) { if (!(cur.includes('Combinaison') && cur.includes("Nid d'ange"))) res.push([...cur]); return; }
+    if (sum > n || cur.length >= 3) return;
+    for (let i = start; i < L.length; i++) rec(i + 1, sum + L[i].v, [...cur, L[i].label]);
+  };
+  rec(0, 0, []);
+  return res.sort((a, b) => a.length - b.length).slice(0, 4);
+}
+
+/* ---------- Météo (Open-Meteo, sans clé) ---------- */
+let wx = read('habits.wx', null);
+const WX_ICON = c => c === 0 ? '☀️' : c <= 2 ? '🌤️' : c === 3 ? '☁️' : c <= 48 ? '🌫️' : c <= 67 ? '🌧️' : c <= 77 ? '❄️' : c <= 82 ? '🌦️' : '⛈️';
+async function loadWeather(force = false) {
+  if (!force && wx && wx.date === todayISO() && Date.now() - wx.at < 30 * 60e3 && wx.lat === S().loc.lat) return;
+  const { lat, lon } = S().loc;
+  try {
+    const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,apparent_temperature,weather_code&hourly=temperature_2m&daily=temperature_2m_max,temperature_2m_min&forecast_days=1&timezone=Europe%2FParis`);
+    const j = await r.json();
+    wx = { at: Date.now(), date: todayISO(), lat, t: j.current.temperature_2m, feel: j.current.apparent_temperature, code: j.current.weather_code, min: j.daily.temperature_2m_min[0], max: j.daily.temperature_2m_max[0], hourly: j.hourly.temperature_2m };
+    write('habits.wx', wx); write('hub.weather', { t: wx.t, date: wx.date, at: wx.at });
+    render();
+  } catch { toast('Météo indisponible pour le moment'); }
+}
+let moment = 'now';
+const MOMENTS = { now: 'Maintenant', matin: 'Matin', aprem: 'Après-midi', soir: 'Soir' };
+function outsideTemp() {
+  if (!wx) return null;
+  if (moment === 'now' || !wx.hourly) return wx.t;
+  const h = { matin: [8, 11], aprem: [13, 17], soir: [18, 21] }[moment];
+  const v = wx.hourly.slice(h[0], h[1] + 1);
+  return v.reduce((a, b) => a + b, 0) / v.length;
+}
+
+/* ---------- Affichage ---------- */
+function wearHTML(list) {
+  return list.length ? `<div class="outfit">${list.map(it => `<div class="wear">${garment(it.ic)}<b>${esc(it.label)}</b>${it.note ? `<small>${esc(it.note)}</small>` : ''}</div>`).join('')}</div>` : '<p class="k-hint">Rien de particulier.</p>';
+}
+function render() {
+  const s = S(), out = outsideTemp();
+  const jour = pick(s.rules.jour, idxOf(s.maison, JOUR_R));
+  const dodo = pick(s.rules.dodo, idxOf(s.chambre, DODO_R));
+  const ext = out == null ? null : extNeed(out);
+  hero($('#hero'), {
+    app: 'habits', title: 'Habits', sub: '‹ Accueil · pour Violette', subHref: './index.html',
+    actions: store.pill() + `<button class="k-ibtn" id="set" aria-label="Réglages">⚙︎</button>`,
+    rings: [
+      { label: 'Dehors', value: out == null ? '—' : Math.round(out) + '°', on: () => loadWeather(true) },
+      { label: 'Min / max', html: `<b style="font-size:13px;color:var(--acc)">${wx ? Math.round(wx.min) + '/' + Math.round(wx.max) + '°' : '—'}</b>` },
+      { label: 'Maison', value: s.maison + '°', on: () => $('#sMaison').focus() },
+      { label: 'Chambre', value: s.chambre + '°', on: () => $('#sChambre').focus() },
+    ],
+    after: el => { store.bindPills(el); $('#set', el).onclick = settings; }
+  });
+  let tip;
+  if (ext && ext.couches >= 3) tip = `Il fait ${Math.round(out)}° dehors : combinaison ou nid d'ange pour sortir, et le bonnet !`;
+  else if (ext && ext.couches > 0) tip = `Il fait ${Math.round(out)}° dehors : ajoute ${ext.couches} couche${ext.couches > 1 ? 's' : ''} pour la sortie.`;
+  else if (out != null) tip = `Il fait ${Math.round(out)}° dehors : pas besoin de couche en plus. Profitez-en !`;
+  else tip = `Je n'ai pas encore la météo. Touche « Dehors » pour la récupérer.`;
+  $('#main').innerHTML = `
+    ${bubble(esc(tip))}
+    <div class="k-card"><div class="card-h"><h3>☀️ Journée à la maison</h3><span class="t">${s.maison}°</span></div>${wearHTML(jour)}</div>
+    <div class="k-card"><div class="card-h"><h3>${wx ? WX_ICON(wx.code) : '🌳'} Pour sortir <span class="k-hint">(en plus)</span></h3><span class="t">${out == null ? '—' : Math.round(out) + '°'}</span></div>
+      <div class="k-chips">${Object.entries(MOMENTS).map(([k, l]) => `<button class="k-chip ${moment === k ? 'on' : ''}" data-m="${k}">${l}</button>`).join('')}</div>
+      ${ext == null ? '<p class="k-hint">Météo en attente…</p>' : ext.couches === 0 ? '<p class="k-hint">Aucune couche en plus : la tenue de la maison suffit.</p>' : `
+        <b>+${ext.couches} couche${ext.couches > 1 ? 's' : ''}</b><span class="k-hint"> · par exemple :</span>
+        <div class="combo">${combos(ext.couches).map(c => `<span class="k-tag">${c.map(esc).join(' + ')}</span>`).join('')}</div>
+        <div class="outfit" style="margin-top:10px">${ext.chauss ? `<div class="wear">${garment('sock')}<b>Chaussettes</b></div>` : ''}${ext.bonnet ? `<div class="wear">${garment('hat')}<b>Bonnet</b></div>` : ''}</div>`}
+    </div>
+    <div class="k-card"><div class="card-h"><h3>🌙 Dodo</h3><span class="t">${s.chambre}°</span></div>${wearHTML(dodo)}</div>
+    <div class="k-sec acc">Températures</div>
+    <div class="k-card">
+      <div class="k-field"><label for="sMaison">Maison (journée)</label><div class="slider-row"><input type="range" class="k-range" id="sMaison" min="10" max="32" step="0.5" value="${s.maison}"><b id="vMaison">${s.maison}°</b></div></div>
+      <div class="k-field" style="margin:0"><label for="sChambre">Chambre (dodo)</label><div class="slider-row"><input type="range" class="k-range" id="sChambre" min="12" max="30" step="0.5" value="${s.chambre}"><b id="vChambre">${s.chambre}°</b></div></div>
+    </div>
+    <div class="k-card" style="display:flex;align-items:center;gap:10px"><div style="flex:1"><b>📍 ${esc(s.loc.name)}</b><div class="k-hint">${wx ? `Ressenti ${Math.round(wx.feel)}° · mis à jour à ${new Date(wx.at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}` : 'Météo non chargée'}</div></div><button class="k-btn sm ghost" id="geo">Ma position</button></div>
+    <button class="k-btn line block" id="rules">✏️ Modifier les règles</button>`;
+  $$('[data-m]').forEach(b => b.onclick = () => { moment = b.dataset.m; render(); });
+  for (const [id, k] of [['sMaison', 'maison'], ['sChambre', 'chambre']]) {
+    const el = $('#' + id);
+    el.oninput = () => { $('#v' + k[0].toUpperCase() + k.slice(1)).textContent = el.value + '°'; };
+    el.onchange = () => { S()[k] = +el.value; saveSettings(); render(); };
+  }
+  $('#geo').onclick = geo;
+  $('#rules').onclick = editRules;
+  // résumé pour l'accueil
+  publishSummary('habits', { date: todayISO(), line: `Maison : ${jour.slice(0, 3).map(x => x.label.toLowerCase()).join(', ') || '—'}${ext?.couches ? ` · dehors +${ext.couches}` : ''}` });
+}
+
+function geo() {
+  if (!navigator.geolocation) return toast('Position non disponible sur ce téléphone');
+  navigator.geolocation.getCurrentPosition(p => {
+    S().loc = { lat: +p.coords.latitude.toFixed(4), lon: +p.coords.longitude.toFixed(4), name: 'Ma position' };
+    saveSettings(); loadWeather(true); toast('Position mise à jour');
+  }, () => toast(`Position refusée : on garde ${S().loc.name}`), { timeout: 10000 });
+}
+
+function editRules() {
+  const r = structuredClone(S().rules);
+  const grid = (key, R, now) => `<div style="overflow-x:auto"><table class="grid-ed"><tr><th></th>${R.labels.map((l, i) => `<th${i === now ? ' style="color:var(--acc)"' : ''}>${l}</th>`).join('')}</tr>
+    ${r[key].map((it, j) => `<tr><td>${esc(it.label)}</td>${R.labels.map((_, i) => `<td><button data-k="${key}" data-j="${j}" data-i="${i}" class="${Object.prototype.hasOwnProperty.call(it.cells, i) ? 'on' : ''}" aria-label="${esc(it.label)} ${R.labels[i]}"></button></td>`).join('')}</tr>`).join('')}</table></div>`;
+  const notes = () => r.jour.filter(it => ['bas', 'robe'].includes(it.id)).flatMap((it, j) => Object.keys(it.cells).map(i => `<div class="k-field"><label>${esc(it.label)} · ${JOUR_R.labels[i]}</label><input data-note="${it.id}" data-i="${i}" value="${esc(it.cells[i])}" placeholder="précision (facultatif)"></div>`)).join('');
+  const body = openSheet('Règles des tenues', `
+    <p class="k-hint" style="margin-top:0">Touche une case pour cocher ou décocher. Les colonnes sont des tranches de température (°C).</p>
+    <div class="k-sec acc">Dodo · chambre</div>${grid('dodo', DODO_R, idxOf(S().chambre, DODO_R))}
+    <div class="k-sec acc">Journée · maison</div>${grid('jour', JOUR_R, idxOf(S().maison, JOUR_R))}
+    <details class="k-more"><summary>Précisions (bas, robe)</summary><div id="notes">${notes()}</div></details>
+    <div class="k-sec acc">Sortie · couches en plus</div>
+    ${r.ext.map((e, i) => `<div class="k-grid3" style="align-items:end"><div class="k-field"><label>Sous (°C)</label><input type="number" data-ex="${i}" data-f="max" value="${e.max}"></div><div class="k-field"><label>Couches</label><input type="number" data-ex="${i}" data-f="couches" value="${e.couches}"></div><div class="k-field"><label>Bonnet</label><select data-ex="${i}" data-f="bonnet"><option value="1" ${e.bonnet ? 'selected' : ''}>Oui</option><option value="0" ${e.bonnet ? '' : 'selected'}>Non</option></select></div></div>`).join('')}
+    <div class="k-btns"><button class="k-btn line" id="rReset">Revenir au tableau d'origine</button><button class="k-btn" id="rSave">Enregistrer</button></div>`);
+  $$('button[data-k]', body).forEach(b => b.onclick = () => {
+    const it = r[b.dataset.k][+b.dataset.j], i = b.dataset.i;
+    if (Object.prototype.hasOwnProperty.call(it.cells, i)) delete it.cells[i]; else it.cells[i] = '';
+    b.classList.toggle('on'); $('#notes', body).innerHTML = notes();
+  });
+  $('#rReset', body).onclick = () => { if (confirm('Revenir aux règles du tableau d\'origine ?')) { S().rules = structuredClone(DEFAULT_RULES); saveSettings(); closeSheet(); render(); } };
+  $('#rSave', body).onclick = () => {
+    $$('[data-note]', body).forEach(inp => { const it = r.jour.find(x => x.id === inp.dataset.note); if (it && Object.prototype.hasOwnProperty.call(it.cells, inp.dataset.i)) it.cells[inp.dataset.i] = inp.value.trim(); });
+    $$('[data-ex]', body).forEach(inp => { const e = r.ext[+inp.dataset.ex]; e[inp.dataset.f] = inp.dataset.f === 'bonnet' ? inp.value === '1' : +inp.value; });
+    S().rules = r; saveSettings(); closeSheet(); render(); toast('Règles enregistrées');
+  };
+}
+
+function settings() {
+  openCommonSettings(`<div class="k-sec acc">Lieu de la météo</div><p class="k-hint">Actuellement : ${esc(S().loc.name)}. Utilise « Ma position » sur l'écran principal pour changer.</p><button class="k-btn line block" id="locReset" style="margin-bottom:8px">Revenir au lieu par défaut</button>`,
+    (body, saving) => { if (!saving) $('#locReset', body).onclick = () => { S().loc = structuredClone(DEFAULT_SETTINGS.loc); saveSettings(); loadWeather(true); closeSheet(); }; });
+}
+addEventListener('k-settings', () => { store.sync(); render(); });
+
+render(); loadWeather(); store.sync();
+</script>
+</body>
+</html>

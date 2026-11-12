@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0bb5a3">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Paperasse</title>
+<link rel="stylesheet" href="ui/kit.css">
+<style>
+:root{--violet:var(--acc);--violet-2:var(--acc);--violet-soft:var(--soft);--violet-ink:var(--acc);--muted:var(--mut);--ok:#14a06b;--warn:#e08a00;--bad:#ff4f5e;--r:18px;--safe-b:env(safe-area-inset-bottom,0px)}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+button,input,select,textarea{font:inherit;color:inherit}
+.top{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:8px;padding:10px 12px;padding-top:max(10px,env(safe-area-inset-top));background:linear-gradient(135deg,var(--acc),var(--acc) 60%,var(--acc));color:#fff}
+.top h1{flex:1;margin:0;font-size:19px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.icon-btn{border:0;background:rgba(255,255,255,.16);color:inherit;width:38px;height:38px;border-radius:12px;display:grid;place-items:center;font-size:18px;cursor:pointer;text-decoration:none;flex:none}
+.sheet .icon-btn{background:var(--violet-soft);color:var(--violet-ink)}
+.sync{border:0;background:rgba(255,255,255,.16);color:#fff;border-radius:99px;padding:6px 10px;display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer}
+.sync .dot{width:8px;height:8px;border-radius:50%;background:#cbd5e1}
+.sync.ok .dot{background:#4ade80}.sync.busy .dot,.sync.pending .dot{background:#fbbf24;animation:pulse 1s infinite}.sync.err .dot{background:#f87171}
+@keyframes pulse{50%{opacity:.3}}
+main{padding:14px 14px calc(96px + var(--safe-b));max-width:1000px;margin:0 auto}
+.bottom{position:fixed;left:0;right:0;bottom:0;z-index:20;display:flex;justify-content:space-around;align-items:center;background:var(--card);border-top:1px solid var(--line);padding:6px 4px calc(6px + var(--safe-b))}
+.bottom button{border:0;background:none;display:flex;flex-direction:column;align-items:center;gap:1px;font-size:20px;color:var(--muted);padding:4px 10px;cursor:pointer;min-width:58px;position:relative}
+.bottom button span{font-size:11px}
+.bottom button.on{color:var(--violet)}
+.bottom button i{position:absolute;top:0;right:8px;font-style:normal;font-size:10px;font-weight:700;background:var(--bad);color:#fff;border-radius:99px;padding:1px 5px}
+.bottom .fab{width:56px;height:56px;border-radius:18px;background:linear-gradient(135deg,var(--acc),var(--acc));color:#fff;font-size:30px;margin-top:-26px;box-shadow:0 6px 18px rgba(109,40,217,.4);justify-content:center;min-width:0}
+h2.sec{font-size:13px;margin:22px 2px 10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.6px;display:flex;justify-content:space-between;align-items:center}
+h2.sec a{text-transform:none;letter-spacing:0;font-weight:600;color:var(--violet);text-decoration:none}
+.card{background:var(--card);border-radius:var(--r);box-shadow:var(--shadow);padding:14px}
+.search{display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:0 12px;box-shadow:var(--shadow)}
+.search input{flex:1;border:0;background:none;padding:12px 0;outline:none;min-width:0}
+.chips{display:flex;gap:8px;overflow-x:auto;padding:10px 0 4px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;border:1px solid var(--line);background:var(--card);border-radius:99px;padding:6px 12px;font-size:13px;cursor:pointer;white-space:nowrap}
+.chip.on{background:var(--violet);border-color:var(--violet);color:#fff}
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px}
+.kpi{background:var(--card);border-radius:14px;padding:12px;box-shadow:var(--shadow);cursor:pointer;border:0;text-align:left}
+.kpi b{display:block;font-size:22px;color:var(--violet)}
+.kpi.alert b{color:var(--bad)}
+.kpi span{font-size:12px;color:var(--muted)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
+.tile{border:0;border-radius:16px;padding:12px;min-height:88px;color:#fff;text-align:left;cursor:pointer;display:flex;flex-direction:column;justify-content:space-between;box-shadow:var(--shadow)}
+.tile .ic{font-size:24px}.tile b{font-size:14px;display:block}.tile small{opacity:.85}
+.doc{display:flex;gap:12px;align-items:center;background:var(--card);border-radius:14px;padding:10px;box-shadow:var(--shadow);margin-bottom:8px;cursor:pointer}
+.doc .ic{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;font-size:22px;flex:none;color:#fff}
+.doc .meta{flex:1;min-width:0}
+.doc .meta b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.doc .meta small{color:var(--muted);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.doc .amt{font-weight:700;white-space:nowrap}
+.pill{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;background:var(--violet-soft);color:var(--violet-ink);white-space:nowrap}
+.pill.bad{background:#fee2e2;color:#b91c1c}.pill.warn{background:#ffedd5;color:#c2410c}.pill.ok{background:#dcfce7;color:#15803d}
+.ev{display:flex;gap:12px;align-items:center;background:var(--card);border-radius:14px;padding:10px 12px;box-shadow:var(--shadow);margin-bottom:8px}
+.ev .d{width:52px;flex:none;text-align:center;border-radius:12px;padding:6px 0;background:var(--violet-soft);color:var(--violet-ink)}
+.ev .d b{display:block;font-size:18px;line-height:1}.ev .d small{font-size:11px;text-transform:uppercase}
+.ev.bad .d{background:#fee2e2;color:#b91c1c}.ev.warn .d{background:#ffedd5;color:#c2410c}
+.ev .meta{flex:1;min-width:0;cursor:pointer}
+.ev .meta b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ev .meta small{color:var(--muted)}
+.empty{text-align:center;color:var(--muted);padding:30px 16px}
+.empty .big{font-size:44px}
+.btn{border:0;border-radius:12px;padding:11px 16px;font-weight:600;cursor:pointer;background:var(--violet);color:#fff;display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.btn.ghost{background:var(--violet-soft);color:var(--violet-ink)}
+.btn.danger{background:#fee2e2;color:#b91c1c}
+.btn.sm{padding:7px 11px;font-size:13px;border-radius:10px}
+.btn.block{width:100%}
+.btn:disabled{opacity:.5}
+.btns{display:flex;gap:8px;flex-wrap:wrap}
+.btns .btn{flex:1}
+.sheet-wrap{position:fixed;inset:0;z-index:50;background:rgba(15,10,30,.45);display:flex;align-items:flex-end;justify-content:center}
+.sheet-wrap[hidden]{display:none}
+.sheet{background:var(--bg);width:100%;max-width:640px;max-height:92vh;border-radius:22px 22px 0 0;display:flex;flex-direction:column;animation:up .2s ease-out}
+@media (min-width:700px){.sheet-wrap{align-items:center}.sheet{border-radius:22px;max-height:88vh}}
+.sheet-head{display:flex;align-items:center;gap:10px;padding:14px 16px 8px}
+.sheet-head h2{flex:1;margin:0;font-size:18px}
+.sheet-body{overflow-y:auto;padding:4px 16px calc(20px + var(--safe-b))}
+@keyframes up{from{transform:translateY(40px);opacity:.4}}
+.field{margin-bottom:12px}
+.field label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin:0 0 4px 2px}
+.field input,.field select,.field textarea{width:100%;border:1px solid var(--line);background:var(--card);border-radius:12px;padding:10px 12px;outline:none}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--violet-2);box-shadow:0 0 0 3px rgba(139,92,246,.18)}
+.field textarea{min-height:76px;resize:vertical}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.hint{font-size:12px;color:var(--muted)}
+.pages{display:flex;gap:8px;overflow-x:auto;padding:4px 0 8px}
+.page{position:relative;width:86px;height:116px;flex:none;border-radius:10px;overflow:hidden;background:var(--violet-soft);display:grid;place-items:center;box-shadow:var(--shadow);cursor:pointer;border:0;padding:0}
+.page img{width:100%;height:100%;object-fit:cover}
+.page .pdf{font-size:30px}
+.page .rm{position:absolute;top:4px;right:4px;width:22px;height:22px;border-radius:50%;background:rgba(0,0,0,.6);color:#fff;font-size:12px;display:grid;place-items:center}
+.page.add{border:2px dashed var(--violet-2);background:none;color:var(--violet);font-size:26px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:14px;margin:12px 0}
+.kv dt{color:var(--muted)}.kv dd{margin:0;word-break:break-word}
+.tag{display:inline-block;background:var(--violet-soft);color:var(--violet-ink);border-radius:99px;padding:2px 9px;font-size:12px;margin:2px 4px 2px 0}
+.todo{background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:14px;padding:10px 12px;margin:10px 0}
+@media all{html[data-theme=dark] .todo{background:#2a1d10;border-color:#5a3b17;color:#fdba74}}
+.spinner{width:42px;height:42px;border:4px solid var(--violet-soft);border-top-color:var(--violet);border-radius:50%;animation:spin 1s linear infinite;margin:20px auto}
+@keyframes spin{to{transform:rotate(360deg)}}
+.toast{position:fixed;left:50%;bottom:calc(90px + var(--safe-b));transform:translateX(-50%) translateY(20px);background:#1e1b2e;color:#fff;padding:10px 16px;border-radius:12px;font-size:14px;opacity:0;pointer-events:none;transition:.25s;z-index:60;max-width:90vw;text-align:center}
+.toast.show{opacity:1;transform:translateX(-50%)}
+details.more summary{cursor:pointer;color:var(--violet);font-weight:600;margin:6px 0 12px}
+.aibox{background:linear-gradient(135deg,var(--acc),#ec4899);color:#fff;border-radius:16px;padding:14px;margin-bottom:12px}
+.aibox p{margin:4px 0 0;font-size:13px;opacity:.92}
+
+/* --- Habillage « Gestion quotidien » --- */
+.k-hero .sync{border:0;height:36px;border-radius:12px;padding:0 10px;background:rgba(255,253,248,.72);color:#26233a;font-size:11.5px;font-weight:700;display:flex;align-items:center;gap:6px;backdrop-filter:blur(6px)}
+.k-hero .icon-btn{border:0;width:36px;height:36px;border-radius:12px;background:rgba(255,253,248,.72);color:#26233a;display:grid;place-items:center;font-size:16px}
+html[data-theme=dark] .k-hero .sync,html[data-theme=dark] .k-hero .icon-btn{background:rgba(33,31,44,.7);color:#f1ede4}
+main{position:relative;z-index:1}
+.bottom .fab{background:var(--acc)!important;box-shadow:0 6px 16px rgba(0,0,0,.18)!important}
+.card,.kpi,.tile,.doc,.ev,.li,.cand,.k-stat{box-shadow:var(--shadow)}
+.tile{color:#fff}
+.aibox{background:var(--acc)!important}
+.menu button.ai .ic{background:var(--acc)!important}
+</style>
+</head>
+<body>
+<header id="hero"></header>
+<div id="topActions" data-keep style="display:none"><button id="syncBtn" class="sync" title="Synchroniser"><span class="dot"></span><span id="syncTxt">Local</span></button><button id="settingsBtn" class="icon-btn" aria-label="Réglages">⚙︎</button></div>
+<a id="hubLink" hidden></a><span id="title" hidden></span>
+<main id="view"></main>
+<nav class="bottom">
+  <button data-nav="#/">🏠<span>Accueil</span></button>
+  <button data-nav="#/all">🗂️<span>Documents</span></button>
+  <button id="fab" class="fab" aria-label="Ajouter">＋</button>
+  <button data-nav="#/agenda">📅<span>Agenda</span></button>
+  <button data-nav="#/todo">📥<span>À traiter</span></button>
+</nav>
+<div id="sheetWrap" class="sheet-wrap" hidden>
+  <div class="sheet" role="dialog" aria-modal="true">
+    <div class="sheet-head"><h2 id="sheetTitle"></h2><button class="icon-btn" id="sheetClose" aria-label="Fermer">✕</button></div>
+    <div id="sheetBody" class="sheet-body"></div>
+  </div>
+</div>
+<div id="toast" class="toast"></div>
+
+<script type="module">
+import { initApp as kitInit, hero as kitHero, aiAsk as kitAI, AI_MODELS, AI_DEFAULT, logoutDevice as kitLogout } from './ui/kit.js';
+import { maskDocument, unmask } from './ui/docmask.js';
+kitInit('paperasse');
+
+/* =========================================================
+   Paperasse — sous-app du hub « Gestion quotidien »
+   Documents, échéances, garanties, contrats. Scan + IA.
+   Données : JSON_PAPERASSE.json dans le dépôt GitHub privé
+   Fichiers : photos / PDF dans paperasse-media/
+   ========================================================= */
+import { mouvementsDuDocument, empreinte, Passerelle, PASSERELLE_VERSION } from './passerelle-budget.js';
+const APP_VERSION = '1.1.0';
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+const now = () => Date.now();
+const norm = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+const read = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } };
+const write = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { console.warn(e); } };
+const todayISO = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10); };
+const frDate = iso => iso ? new Date(iso + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+const money = n => n === '' || n == null || isNaN(parseFloat(n)) ? '' : Number(n).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' });
+const daysTo = iso => Math.round((new Date(iso + 'T12:00:00') - new Date(todayISO() + 'T12:00:00')) / 864e5);
+const isISO = s => /^\d{4}-\d{2}-\d{2}$/.test(s || '');
+
+const CATS = {
+  facture:  { label: 'Factures',               icon: '🧾', color: '#7c3aed' },
+  garantie: { label: 'Achats & garanties',     icon: '🛡️', color: '#0891b2' },
+  contrat:  { label: 'Contrats & abonnements', icon: '📑', color: '#4f46e5' },
+  sante:    { label: 'Santé',                  icon: '🩺', color: '#16a34a' },
+  admin:    { label: 'Impôts & administratif', icon: '🏛️', color: '#ca8a04' },
+  banque:   { label: 'Banque & assurances',    icon: '🏦', color: '#2563eb' },
+  logement: { label: 'Logement',               icon: '🏠', color: '#ea580c' },
+  vehicule: { label: 'Véhicule',               icon: '🚗', color: '#dc2626' },
+  famille:  { label: 'Enfant & famille',       icon: '🧸', color: '#db2777' },
+  travail:  { label: 'Travail & pro',          icon: '💼', color: '#475569' },
+  autre:    { label: 'Autre',                  icon: '📦', color: '#6b7280' },
+};
+const STATUS = { a_traiter: 'À traiter', fait: 'Traité', archive: 'Archivé' };
+const RENEW = { '': 'Ponctuel', mensuel: 'Tous les mois', trimestriel: 'Tous les 3 mois', semestriel: 'Tous les 6 mois', annuel: 'Tous les ans' };
+const RENEW_MONTHS = { mensuel: 1, trimestriel: 3, semestriel: 6, annuel: 12 };
+const cat = k => CATS[k] || CATS.autre;
+const addMonths = (iso, m) => { const d = new Date(iso + 'T12:00:00'); const day = d.getDate(); d.setMonth(d.getMonth() + m); if (d.getDate() < day) d.setDate(0); return d.toISOString().slice(0, 10); };
+
+/* ---------- Réglages (GitHub + clé IA partagés via le hub) ---------- */
+const LS = { data: 'paperasse.data.v1', settings: 'paperasse.settings.v1', sync: 'paperasse.sync.v1', ui: 'paperasse.ui.v1', shared: 'hub.github', ai: 'hub.ai' };
+const DEFAULT_SETTINGS = { owner: '', repo: '', branch: '', path: 'JSON_PAPERASSE.json', mediaDir: 'paperasse-media', token: '', aiKey: '', aiModel: 'gemini-flash-latest', hubUrl: './index.html', remindDays: 7, maskNames: '' };
+function loadSettings() {
+  const s = { ...DEFAULT_SETTINGS, ...read(LS.settings, {}) };
+  const sh = { ...(read('violette_github', {}) || {}), ...Object.fromEntries(Object.entries(read(LS.shared, {}) || {}).filter(([, v]) => v)) }; if (sh) for (const k of ['owner', 'repo', 'branch', 'token']) if (!s[k] && sh[k]) s[k] = sh[k];
+  if (!s.branch) s.branch = 'main';
+  if (String(s.aiKey || '').startsWith('sk-ant')) s.aiKey = '';
+  if (!String(s.aiModel || '').startsWith('gemini')) s.aiModel = AI_DEFAULT;
+  const ai = read(LS.ai, null); if (ai) { if (!s.aiKey && ai.key) s.aiKey = ai.key; if (!read(LS.settings, {}).aiModel && ai.model) s.aiModel = ai.model; }
+  if (!s.aiKey) { const c = read('collections.settings.v1', {}); if (c.aiKey) s.aiKey = c.aiKey; }
+  return s;
+}
+let S = loadSettings();
+let ui = { filter: 'all', q: '', sort: 'date', ...read(LS.ui, {}) };
+const saveUI = () => write(LS.ui, ui);
+
+/* ---------- Données ---------- */
+const emptyData = () => ({ app: 'paperasse', schema: 1, updatedAt: 0, docs: [], tombstones: {}, prefs: null, prefsAt: 0 });
+// Réglages de Paperasse qui suivent l'utilisateur sur tous ses appareils (rangés dans JSON_PAPERASSE.json)
+function applyPrefs() { if (data.prefs) { if (data.prefs.remindDays) S.remindDays = data.prefs.remindDays; if (typeof data.prefs.maskNames === 'string') S.maskNames = data.prefs.maskNames; } }
+let data = read(LS.data, null) || emptyData();
+let syncMeta = { sha: null, lastSync: 0, pendingMedia: [], ...read(LS.sync, {}) };
+const saveSync = () => write(LS.sync, syncMeta);
+let budgetAcks = (read('passerelle.acks.v1', { acks: {} }) || {}).acks || {};
+async function refreshAcks() { try { budgetAcks = (await new Passerelle().lireAccuses()).acks || {}; } catch {} }
+function touch() { data.updatedAt = now(); write(LS.data, data); scheduleSync(); }
+function upsertDoc(d) { d.updatedAt = now(); const i = data.docs.findIndex(x => x.id === d.id); if (i >= 0) data.docs[i] = d; else data.docs.push(d); touch(); }
+function deleteDoc(id) { const d = getDoc(id); data.docs = data.docs.filter(x => x.id !== id); data.tombstones[id] = now(); for (const f of d?.files || []) removeMedia(f.path); touch(); }
+const getDoc = id => data.docs.find(x => x.id === id);
+function blankDoc() { return { id: uid(), category: 'autre', title: '', issuer: '', docDate: todayISO(), amount: '', dueDate: '', renewal: '', endDate: '', warrantyEnd: '', reference: '', person: '', status: 'a_traiter', action: '', summary: '', text: '', tags: [], notes: '', files: [], history: [], source: 'manuel', createdAt: now(), updatedAt: now() }; }
+function addHistory(d, txt) { d.history = [...(d.history || []), { at: now(), txt }].slice(-30); }
+function mergeData(a, b) {
+  const out = emptyData();
+  out.tombstones = { ...(a.tombstones || {}) };
+  for (const [k, v] of Object.entries(b.tombstones || {})) out.tombstones[k] = Math.max(out.tombstones[k] || 0, v);
+  const m = new Map();
+  for (const x of [...(a.docs || []), ...(b.docs || [])]) { const c = m.get(x.id); if (!c || (x.updatedAt || 0) > (c.updatedAt || 0)) m.set(x.id, x); }
+  out.docs = [...m.values()].filter(x => !((out.tombstones[x.id] || 0) >= (x.updatedAt || 0))).sort((p, q) => (p.createdAt || 0) - (q.createdAt || 0));
+  const pa = a.prefsAt || 0, pb = b.prefsAt || 0; if (pb > pa) { out.prefs = b.prefs; out.prefsAt = pb; } else { out.prefs = a.prefs || null; out.prefsAt = pa; }
+  out.updatedAt = Math.max(a.updatedAt || 0, b.updatedAt || 0);
+  return out;
+}
+const canon = d => JSON.stringify({ p: [d.prefs || null, d.prefsAt || 0], d: [...(d.docs || [])].sort((a, b) => a.id < b.id ? -1 : 1), t: Object.keys(d.tombstones || {}).sort().map(k => [k, d.tombstones[k]]) });
+
+/* ---------- Encodage / IndexedDB ---------- */
+function utf8ToB64(str) { const bytes = new TextEncoder().encode(str); let bin = ''; for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return btoa(bin); }
+function b64ToUtf8(b64) { const bin = atob(b64.replace(/\s/g, '')); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return new TextDecoder().decode(u); }
+const blobToB64 = b => new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(',')[1]); fr.onerror = rej; fr.readAsDataURL(b); });
+const idb = (() => {
+  let dbp;
+  const open = () => dbp ||= new Promise((res, rej) => { const r = indexedDB.open('paperasse-media', 1); r.onupgradeneeded = () => r.result.createObjectStore('blobs'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+  const tx = async (mode, fn) => { const db = await open(); return new Promise((res, rej) => { const t = db.transaction('blobs', mode); const rq = fn(t.objectStore('blobs')); t.oncomplete = () => res(rq?.result); t.onerror = () => rej(t.error); }); };
+  return { get: k => tx('readonly', s => s.get(k)).catch(() => null), set: (k, v) => tx('readwrite', s => s.put(v, k)), del: k => tx('readwrite', s => s.delete(k)).catch(() => {}) };
+})();
+
+/* ---------- GitHub ---------- */
+async function errMsg(r) { try { const j = await r.json(); return `${r.status} ${j.message || ''}`; } catch { return `HTTP ${r.status}`; } }
+const gh = {
+  ok: () => !!(S.owner && S.repo && S.token),
+  url: p => `https://api.github.com/repos/${encodeURIComponent(S.owner)}/${encodeURIComponent(S.repo)}/contents/${p.split('/').map(encodeURIComponent).join('/')}`,
+  h: (accept = 'application/vnd.github+json') => ({ Authorization: `Bearer ${S.token}`, Accept: accept, 'X-GitHub-Api-Version': '2022-11-28' }),
+  async getText(p) {
+    const q = `?ref=${encodeURIComponent(S.branch)}`;
+    const r = await fetch(gh.url(p) + q, { headers: gh.h(), cache: 'no-store' });
+    if (r.status === 404) return null;
+    if (!r.ok) throw new Error(await errMsg(r));
+    const j = await r.json(); let text;
+    if (j.content && j.encoding === 'base64') text = b64ToUtf8(j.content);
+    else { const r2 = await fetch(gh.url(p) + q, { headers: gh.h('application/vnd.github.raw+json'), cache: 'no-store' }); if (!r2.ok) throw new Error(await errMsg(r2)); text = await r2.text(); }
+    return { sha: j.sha, text };
+  },
+  async sha(p) { const r = await fetch(gh.url(p) + `?ref=${encodeURIComponent(S.branch)}`, { headers: gh.h(), cache: 'no-store' }); return r.ok ? (await r.json()).sha : null; },
+  async put(p, b64, sha, message) {
+    const body = { message, content: b64, branch: S.branch }; if (sha) body.sha = sha;
+    const r = await fetch(gh.url(p), { method: 'PUT', headers: { ...gh.h(), 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!r.ok) { const e = new Error(await errMsg(r)); e.status = r.status; throw e; }
+    return (await r.json()).content.sha;
+  },
+  async getBlob(p) { const r = await fetch(gh.url(p) + `?ref=${encodeURIComponent(S.branch)}`, { headers: gh.h('application/vnd.github.raw+json'), cache: 'no-store' }); return r.ok ? r.blob() : null; },
+  async del(p) { const sha = await gh.sha(p); if (!sha) return; await fetch(gh.url(p), { method: 'DELETE', headers: { ...gh.h(), 'Content-Type': 'application/json' }, body: JSON.stringify({ message: 'Paperasse : suppression fichier', sha, branch: S.branch }) }); },
+};
+
+/* ---------- Synchronisation ---------- */
+let syncing = false, syncAgain = false, syncTimer = null;
+function setSync(state, msg = '') {
+  const b = $('#syncBtn'); b.className = 'sync ' + state;
+  $('#syncTxt').textContent = { local: 'Local', pending: 'En attente', busy: 'Synchro…', ok: 'À jour', err: 'Erreur' }[state] || state;
+  b.title = msg || (syncMeta.lastSync ? 'Dernière synchro : ' + new Date(syncMeta.lastSync).toLocaleString('fr-FR') : 'Synchroniser');
+}
+function scheduleSync(delay = 1500) { clearTimeout(syncTimer); if (!gh.ok()) { setSync('local', 'Configure GitHub dans les réglages'); return; } setSync('pending'); syncTimer = setTimeout(sync, delay); }
+async function uploadPendingMedia() {
+  for (const p of [...syncMeta.pendingMedia]) {
+    const blob = await idb.get(p);
+    if (blob) {
+      const b64 = await blobToB64(blob);
+      try { await gh.put(p, b64, null, `Paperasse : fichier ${p.split('/').pop()}`); }
+      catch (e) { if (e.status === 422 || e.status === 409) await gh.put(p, b64, await gh.sha(p), `Paperasse : fichier ${p.split('/').pop()}`); else throw e; }
+    }
+    syncMeta.pendingMedia = syncMeta.pendingMedia.filter(x => x !== p); saveSync();
+  }
+}
+function removeMedia(p) { syncMeta.pendingMedia = syncMeta.pendingMedia.filter(x => x !== p); saveSync(); idb.del(p); if (gh.ok()) gh.del(p).catch(() => {}); }
+async function sync() {
+  if (!gh.ok()) { setSync('local', 'Configure GitHub dans les réglages'); return; }
+  if (syncing) { syncAgain = true; return; }
+  syncing = true; setSync('busy');
+  try {
+    await uploadPendingMedia();
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const remote = await gh.getText(S.path);
+      const rd = remote && remote.text.trim() ? JSON.parse(remote.text) : null;
+      const merged = rd ? mergeData(data, rd) : data;
+      const localChanged = canon(merged) !== canon(data);
+      const needPush = !rd || canon(merged) !== canon(rd);
+      data = merged; write(LS.data, data);
+      if (localChanged) render();
+      if (!needPush) { syncMeta.sha = remote.sha; break; }
+      try { syncMeta.sha = await gh.put(S.path, utf8ToB64(JSON.stringify(data, null, 1)), remote?.sha, `Paperasse : ${data.docs.length} documents (${new Date().toLocaleString('fr-FR')})`); break; }
+      catch (e) { if ((e.status === 409 || e.status === 422) && attempt < 3) continue; throw e; }
+    }
+    syncMeta.lastSync = now(); saveSync(); setSync('ok');
+    refreshAcks();
+  } catch (e) { console.error(e); setSync('err', e.message); toast('Synchro GitHub : ' + e.message); }
+  finally { syncing = false; if (syncAgain) { syncAgain = false; scheduleSync(300); } }
+}
+
+/* ---------- Fichiers (photos / PDF) ---------- */
+const urlCache = new Map();
+async function fileURL(f) {
+  if (urlCache.has(f.path)) return urlCache.get(f.path);
+  let blob = await idb.get(f.path);
+  if (!blob && gh.ok()) { try { blob = await gh.getBlob(f.path); if (blob) { blob = new Blob([blob], { type: f.type }); idb.set(f.path, blob); } } catch {} }
+  if (!blob) return null;
+  const u = URL.createObjectURL(blob); urlCache.set(f.path, u); return u;
+}
+async function storeFile(docId, blob, type, name) {
+  const ext = type === 'application/pdf' ? 'pdf' : 'jpg';
+  const p = `${S.mediaDir.replace(/\/+$/, '')}/${docId}-${uid()}.${ext}`;
+  await idb.set(p, blob); urlCache.set(p, URL.createObjectURL(blob));
+  syncMeta.pendingMedia.push(p); saveSync();
+  return { path: p, type, name: name || '' };
+}
+async function fileToImage(file) { const u = URL.createObjectURL(file); const img = new Image(); img.src = u; await img.decode(); setTimeout(() => URL.revokeObjectURL(u), 2000); return img; }
+function drawScaled(img, max) { const sc = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight)); const c = document.createElement('canvas'); c.width = Math.round(img.naturalWidth * sc); c.height = Math.round(img.naturalHeight * sc); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); return c; }
+const canvasToBlob = (c, q = 0.82) => new Promise(r => c.toBlob(r, 'image/jpeg', q));
+function pickFiles({ camera = false, multiple = false, pdf = true } = {}) {
+  return new Promise(res => {
+    const inp = document.createElement('input'); inp.type = 'file'; inp.accept = pdf ? 'image/*,application/pdf' : 'image/*';
+    if (camera) { inp.capture = 'environment'; inp.accept = 'image/*'; } if (multiple) inp.multiple = true;
+    inp.onchange = () => res([...inp.files]); inp.addEventListener('cancel', () => res([]));
+    inp.click();
+  });
+}
+// Normalise une page : image → JPEG 1800 px (lisible), PDF → tel quel
+async function preparePage(file) {
+  if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
+    if (file.size > 15e6) throw new Error(`« ${file.name} » dépasse 15 Mo`);
+    return { blob: file, type: 'application/pdf', name: file.name, url: URL.createObjectURL(file) };
+  }
+  const blob = await canvasToBlob(drawScaled(await fileToImage(file), 1800), 0.82);
+  return { blob, type: 'image/jpeg', name: file.name, url: URL.createObjectURL(blob) };
+}
+
+/* ---------- IA ---------- */
+function parseJsonLoose(t) { t = String(t).replace(/```json|```/g, ''); const a = t.indexOf('{'), b = t.lastIndexOf('}'); if (a < 0 || b < a) throw new Error('Réponse IA illisible'); return JSON.parse(t.slice(a, b + 1)); }
+/* ---------- Lecture du document sur le téléphone (rien ne part à ce stade) ---------- */
+const PDFJS = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/';
+const TESS = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+let pdfjsP, tessP;
+const loadPdfjs = () => pdfjsP ||= import(PDFJS + 'pdf.min.mjs').then(m => { m.GlobalWorkerOptions.workerSrc = PDFJS + 'pdf.worker.min.mjs'; return m; });
+const loadTess = () => tessP ||= new Promise((ok, ko) => { const sc = document.createElement('script'); sc.src = TESS; sc.onload = () => ok(window.Tesseract); sc.onerror = () => { tessP = null; ko(new Error('Module de lecture indisponible (hors ligne ?)')); }; document.head.appendChild(sc); });
+async function ocr(img, step, label) {
+  const T = await loadTess();
+  const r = await T.recognize(img, 'fra', { logger: m => m.status === 'recognizing text' && step?.(`${label} : lecture ${Math.round(m.progress * 100)} %`) });
+  return r.data.text || '';
+}
+async function readPages(pages, step) {
+  const out = [];
+  for (let i = 0; i < Math.min(pages.length, 10); i++) {
+    const p = pages[i], label = `Page ${i + 1}/${pages.length}`;
+    if (p.type === 'application/pdf') {
+      step?.(`${label} : ouverture du PDF…`);
+      const pdf = await (await loadPdfjs()).getDocument({ data: await p.blob.arrayBuffer() }).promise;
+      for (let n = 1; n <= Math.min(pdf.numPages, 6); n++) {
+        const pg = await pdf.getPage(n);
+        const tc = await pg.getTextContent();
+        let txt = tc.items.map(it => it.str + (it.hasEOL ? '\n' : ' ')).join('');
+        if (txt.replace(/\s/g, '').length < 40) { // PDF scanné : on le lit comme une photo
+          const vp = pg.getViewport({ scale: 2 }); const cv = document.createElement('canvas'); cv.width = vp.width; cv.height = vp.height;
+          await pg.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
+          txt = await ocr(cv, step, `${label}, feuille ${n}`);
+        }
+        out.push(txt);
+      }
+    } else out.push(await ocr(p.blob, step, label));
+  }
+  return out.join('\n\n---\n\n');
+}
+
+/* ---------- IA (Gemini) : ne reçoit que le texte masqué ---------- */
+async function aiExtract(pages, step) {
+  if (!S.aiKey) throw new Error("Ajoute ta clé Gemini dans les réglages (⚙︎)");
+  const raw = await readPages(pages, step);
+  if (raw.replace(/\s/g, '').length < 20) throw new Error("Je n'arrive pas à lire ce document : remplis-le à la main");
+  const names = [...new Set([...data.docs.map(d => d.person), (read('hub.prefs', {}) || {}).name, ...String(S.maskNames || '').split(',')].map(n => String(n || '').trim()).filter(Boolean).flatMap(n => String(n).split(/[\s,]+/)))];
+  const m = maskDocument(raw, { names });
+  step?.('Classement par l’IA (texte masqué)…');
+  const issuers = [...new Set(data.docs.map(d => d.issuer).filter(Boolean))].slice(0, 80).join(' | ') || 'aucun';
+  const prompt = `Tu es l'assistant administratif d'une famille française. Voici le texte d'un document, lu automatiquement (il peut contenir des erreurs de lecture).
+Par confidentialité, les dates sont remplacées par des repères [DATE1], [DATE2]…, les montants par [MONTANT1], [MONTANT2]…, et les autres nombres par ###. Tu ne connais donc pas leurs valeurs : désigne-les par leur repère.
+N'invente rien : "" si l'information n'apparaît pas.
+Émetteurs déjà connus (réutilise exactement la même orthographe si c'est le même) : ${issuers}.
+Catégories possibles : ${Object.entries(CATS).map(([k, c]) => `${k} (${c.label})`).join(', ')}.
+Réponds UNIQUEMENT avec un JSON valide :
+{"category":"une des clés ci-dessus","title":"titre court et explicite sans montant ni date chiffrée, ex. « Facture électricité EDF », « Garantie lave-linge Bosch »","issuer":"organisme, entreprise ou administration émettrice","docDate":"repère DATEn de la date du document","amount":"repère MONTANTn du montant principal TTC","dueDate":"repère DATEn de la date limite de paiement / de réponse / de démarche","renewal":"\\"\\"|mensuel|trimestriel|semestriel|annuel","endDate":"repère DATEn de fin de contrat / d'expiration","warrantyEnd":"repère DATEn de fin de garantie si elle est écrite","warrantyMonths":"durée de garantie en mois si elle est indiquée (ex. 24), sinon \\"\\"","action":"ce qu'il faut faire, en une phrase, avec les repères (ex. « Payer [MONTANT2] avant le [DATE5] »), ou \\"\\"","summary":"résumé en 1 ou 2 phrases, avec les repères si utile","tags":["mots-clés utiles"],"confidence":0.0}
+Texte :
+${m.masked.slice(0, 12000)}`;
+  const x = unmask(parseJsonLoose(await kitAI([prompt], { key: S.aiKey, model: S.aiModel, maxTokens: 2000 })), m);
+  if (!x.warrantyEnd && +x.warrantyMonths > 0 && /garantie|achat|facture/i.test(x.category + x.title)) x.warrantyEnd = addMonthsISO(x.docDate || todayISO(), +x.warrantyMonths);
+  x.reference = m.reference;
+  x.text = raw.replace(/\s+/g, ' ').slice(0, 600); // pour ta recherche : reste dans ton dépôt, jamais envoyé
+  return x;
+}
+function addMonthsISO(d, n) { const [y, mo, da] = d.split('-').map(Number); const t = new Date(Date.UTC(y, mo - 1 + n, da)); return t.toISOString().slice(0, 10); }
+
+/* ---------- Échéances ---------- */
+function events({ includePast = true, horizon = 3650 } = {}) {
+  const out = [];
+  for (const d of data.docs) {
+    if (d.status === 'archive') continue;
+    if (isISO(d.dueDate) && d.status !== 'fait') out.push({ doc: d, date: d.dueDate, kind: 'due', label: d.action || 'Échéance' });
+    if (isISO(d.endDate)) out.push({ doc: d, date: d.endDate, kind: 'end', label: d.category === 'contrat' ? 'Fin / renouvellement du contrat' : 'Expiration' });
+    if (isISO(d.warrantyEnd)) out.push({ doc: d, date: d.warrantyEnd, kind: 'warranty', label: 'Fin de garantie' });
+  }
+  return out.map(e => ({ ...e, days: daysTo(e.date) }))
+    .filter(e => (includePast || e.days >= 0) && e.days <= horizon && !(e.kind !== 'due' && e.days < -30))
+    .sort((a, b) => a.days - b.days);
+}
+const urgentCount = () => events({ horizon: S.remindDays }).filter(e => e.kind === 'due' || e.days >= 0).length;
+function evClass(e) { return e.days < 0 ? 'bad' : e.days <= S.remindDays ? 'warn' : ''; }
+function evWhen(e) { return e.days < 0 ? `en retard de ${-e.days} j` : e.days === 0 ? "aujourd'hui" : e.days === 1 ? 'demain' : `dans ${e.days} j`; }
+function evHTML(e) {
+  const d = new Date(e.date + 'T12:00:00');
+  const kindIc = { due: '⏰', end: '📑', warranty: '🛡️' }[e.kind];
+  return `<div class="ev ${evClass(e)}"><div class="d"><b>${d.getDate()}</b><small>${d.toLocaleDateString('fr-FR', { month: 'short' })}</small></div>
+    <div class="meta" data-open="${esc(e.doc.id)}"><b>${kindIc} ${esc(e.doc.title)}</b><small>${esc(e.label)} · ${evWhen(e)}${e.doc.amount && e.kind === 'due' ? ' · ' + money(e.doc.amount) : ''}</small></div>
+    ${e.kind === 'due' ? `<button class="btn sm" data-done="${esc(e.doc.id)}">Fait</button>` : `<button class="btn ghost sm" data-ics="${esc(e.doc.id)}|${e.kind}">🔔</button>`}</div>`;
+}
+function markDone(d) {
+  if (parseFloat(d.amount) > 0 && (isISO(d.dueDate) || !d.payments?.length)) d.payments = [...(d.payments || []), { date: todayISO(), dueDate: isISO(d.dueDate) ? d.dueDate : '', amount: d.amount }].slice(-60);
+  if (d.renewal && RENEW_MONTHS[d.renewal] && isISO(d.dueDate)) {
+    const next = addMonths(d.dueDate, RENEW_MONTHS[d.renewal]);
+    addHistory(d, `Échéance du ${frDate(d.dueDate)} traitée → prochaine le ${frDate(next)}`);
+    d.dueDate = next; d.status = 'a_traiter';
+    toast(`Traité ✓ — prochaine échéance le ${frDate(next)}`);
+  } else { addHistory(d, 'Marqué comme traité'); d.status = 'fait'; toast('Traité ✓'); }
+  upsertDoc(d);
+}
+function icsFor(d, kind) {
+  const date = kind === 'warranty' ? d.warrantyEnd : kind === 'end' ? d.endDate : d.dueDate; if (!isISO(date)) return;
+  const label = kind === 'warranty' ? 'Fin de garantie' : kind === 'end' ? 'Fin de contrat / expiration' : (d.action || 'Échéance');
+  const dt = date.replace(/-/g, ''); const nx = new Date(date + 'T12:00:00'); nx.setDate(nx.getDate() + 1);
+  const escI = s => String(s || '').replace(/[\\,;]/g, m => '\\' + m).replace(/\n/g, '\\n');
+  const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Gestion quotidien//Paperasse//FR', 'BEGIN:VEVENT', `UID:${d.id}-${kind}@paperasse`, `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').slice(0, 15)}Z`,
+    `DTSTART;VALUE=DATE:${dt}`, `DTEND;VALUE=DATE:${nx.toISOString().slice(0, 10).replace(/-/g, '')}`, `SUMMARY:${escI(`${label} — ${d.title}`)}`,
+    `DESCRIPTION:${escI([d.issuer, d.amount ? money(d.amount) : '', d.reference ? 'Réf. ' + d.reference : '', d.summary].filter(Boolean).join('\n'))}`,
+    'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${escI(label)}`, `TRIGGER:-P${Math.max(1, S.remindDays)}D`, 'END:VALARM', 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([ics], { type: 'text/calendar' })); a.download = `${norm(d.title).replace(/[^a-z0-9]+/g, '-').slice(0, 40) || 'rappel'}.ics`; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+  toast('Ouvre le fichier pour l’ajouter à ton agenda');
+}
+function bindEvents(root) {
+  root.addEventListener('click', e => {
+    const done = e.target.closest('[data-done]'); if (done) { markDone(getDoc(done.dataset.done)); render(); return; }
+    const ics = e.target.closest('[data-ics]'); if (ics) { const [id, kind] = ics.dataset.ics.split('|'); icsFor(getDoc(id), kind); return; }
+    const op = e.target.closest('[data-open]'); if (op) openDetail(op.dataset.open);
+  });
+}
+
+/* ---------- UI : panneaux & toasts ---------- */
+let toastT;
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2600); }
+let sheetOnClose = null, afterClose = null;
+function openSheet(title, html, { onClose } = {}) {
+  const w = $('#sheetWrap'); const wasOpen = !w.hidden;
+  if (wasOpen && sheetOnClose) { const f = sheetOnClose; sheetOnClose = null; f(); }
+  $('#sheetTitle').textContent = title; $('#sheetBody').innerHTML = html; $('#sheetBody').scrollTop = 0;
+  sheetOnClose = onClose || null;
+  if (!wasOpen) { w.hidden = false; history.pushState({ sheet: true }, ''); }
+  return $('#sheetBody');
+}
+function doCloseSheet() { const w = $('#sheetWrap'); if (w.hidden) return; w.hidden = true; $('#sheetBody').innerHTML = ''; if (sheetOnClose) { const f = sheetOnClose; sheetOnClose = null; f(); } }
+function closeSheet(then) { if ($('#sheetWrap').hidden) { then?.(); return; } if (history.state?.sheet) { afterClose = then || null; history.back(); } else { doCloseSheet(); then?.(); } }
+window.addEventListener('popstate', () => { if (!$('#sheetWrap').hidden) doCloseSheet(); const f = afterClose; afterClose = null; f?.(); });
+$('#sheetClose').onclick = () => closeSheet();
+$('#sheetWrap').addEventListener('click', e => { if (e.target.id === 'sheetWrap') closeSheet(); });
+
+function docRow(d) {
+  const c = cat(d.category);
+  const evs = events().filter(e => e.doc.id === d.id);
+  const next = evs.find(e => e.days >= 0 || e.kind === 'due');
+  const pill = d.status === 'a_traiter' && !next ? `<span class="pill warn">À traiter</span>` : next ? `<span class="pill ${evClass(next)}">${evWhen(next)}</span>` : d.status === 'archive' ? `<span class="pill">Archivé</span>` : '';
+  return `<div class="doc" data-open="${esc(d.id)}"><div class="ic" style="background:${c.color}">${c.icon}</div>
+    <div class="meta"><b>${esc(d.title || 'Sans titre')}</b><small>${esc([d.issuer, frDate(d.docDate)].filter(Boolean).join(' · '))}</small>${pill ? `<small>${pill}${d.files?.length ? ` · 📎 ${d.files.length}` : ''}</small>` : d.files?.length ? `<small>📎 ${d.files.length}</small>` : ''}</div>
+    ${d.amount ? `<div class="amt">${money(d.amount)}</div>` : ''}</div>`;
+}
+
+/* ---------- Vues ---------- */
+const view = $('#view');
+const route = () => location.hash.replace(/^#\/?/, '').split('/');
+function render() {
+  applyPrefs();
+  const [r, arg] = route();
+  $$('.bottom [data-nav]').forEach(b => b.classList.toggle('on', b.dataset.nav === '#/' + (r || '') || (r === 'c' && b.dataset.nav === '#/all')));
+  const n = data.docs.filter(d => d.status === 'a_traiter' && !isISO(d.dueDate)).length + urgentCount();
+  const tb = $('[data-nav="#/todo"]'); tb.querySelector('i')?.remove(); if (n) tb.insertAdjacentHTML('beforeend', `<i>${n}</i>`);
+  if (r === 'c' && CATS[arg]) renderList(arg);
+  else if (r === 'all') renderList(null);
+  else if (r === 'agenda') renderAgenda();
+  else if (r === 'todo') renderTodo();
+  else renderHome();
+  drawHero();
+}
+
+function drawHero() {
+  const evs = events({ horizon: 60 });
+  const late = evs.filter(e => e.days < 0 && e.kind === 'due').length;
+  const soon = evs.filter(e => e.days >= 0 && e.days <= 30).length;
+  const warr = data.docs.filter(d => isISO(d.warrantyEnd) && daysTo(d.warrantyEnd) >= 0).length;
+  const todo = data.docs.filter(d => d.status === 'a_traiter').length;
+  kitHero($('#hero'), { app: 'paperasse', title: $('#title').textContent || 'Paperasse', sub: '‹ Accueil', subHref: './index.html',
+    rings: [
+      { label: 'En retard', value: late, href: '#/agenda', color: late ? '#ff4f5e' : undefined },
+      { label: '≤ 30 jours', value: soon, href: '#/agenda', color: '#e08a00' },
+      { label: 'Garanties', value: warr, href: '#/all' },
+      { label: 'À traiter', value: todo, href: '#/todo', color: '#2f86ff' },
+    ],
+    after: el => { const a = $('#topActions'); a.style.display = 'flex'; a.style.gap = '6px'; el.querySelector('.k-actions').appendChild(a); } });
+}
+function deepLink() { const m = location.hash.match(/^#doc=(.+)$/); if (!m) return false; history.replaceState(null, '', '#/'); render(); if (getDoc(decodeURIComponent(m[1]))) openDetail(decodeURIComponent(m[1])); return true; }
+window.addEventListener('hashchange', () => { if (deepLink()) return; window.scrollTo(0, 0); render(); });
+
+function renderHome() {
+  $('#title').textContent = 'Paperasse';
+  const evs = events({ horizon: 60 });
+  const late = evs.filter(e => e.days < 0 && e.kind === 'due').length;
+  const soon = evs.filter(e => e.days >= 0 && e.days <= 30).length;
+  const warr = data.docs.filter(d => isISO(d.warrantyEnd) && daysTo(d.warrantyEnd) >= 0).length;
+  const inbox = data.docs.filter(d => d.status === 'a_traiter' && !isISO(d.dueDate));
+  const counts = Object.fromEntries(Object.keys(CATS).map(k => [k, data.docs.filter(d => d.category === k && d.status !== 'archive').length]));
+  view.innerHTML = `<div id="home">
+    <label class="search">🔎<input id="homeQ" placeholder="Rechercher : EDF, n° de contrat, lave-linge…" enterkeyhint="search"></label>
+
+    ${!data.docs.length ? `<div class="aibox" style="margin-top:16px"><b>✨ Commence par un scan</b><p>Prends une facture, un courrier ou un contrat en photo (ou importe un PDF) : l'IA le classe, repère le montant, l'échéance et la fin de garantie.</p><div style="margin-top:10px"><button class="btn" style="background:#fff;color:var(--acc)" id="firstScan">📷 Scanner un document</button></div></div>` : ''}
+    <h2 class="sec">📅 À venir <a href="#/agenda">Tout voir</a></h2>
+    ${evs.filter(e => e.days <= 60).slice(0, 6).map(evHTML).join('') || '<p class="hint">Aucune échéance dans les 60 prochains jours 🎉</p>'}
+    ${inbox.length ? `<h2 class="sec">📥 À traiter <a href="#/todo">Tout voir</a></h2>${inbox.slice(0, 4).map(docRow).join('')}` : ''}
+    <h2 class="sec">Classeurs</h2>
+    <div class="tiles">${Object.entries(CATS).map(([k, c]) => `<button class="tile" data-go="#/c/${k}" style="background:linear-gradient(150deg,${c.color},#3b0764)"><span class="ic">${c.icon}</span><span><b>${c.label}</b><small>${counts[k]} doc${counts[k] > 1 ? 's' : ''}</small></span></button>`).join('')}</div></div>`;
+  $('#homeQ').addEventListener('keydown', e => { if (e.key === 'Enter') { ui.q = e.target.value; ui.filter = 'all'; saveUI(); location.hash = '#/all'; } });
+  view.querySelectorAll('[data-go]').forEach(b => b.onclick = () => location.hash = b.dataset.go);
+  if ($('#firstScan')) $('#firstScan').onclick = () => openCapture({ camera: true });
+  bindEvents($('#home'));
+}
+
+function filterDocs(list) {
+  const q = norm(ui.q);
+  let out = list;
+  if (q) out = out.filter(d => norm([d.title, d.issuer, d.reference, d.person, d.summary, d.text, d.notes, d.action, (d.tags || []).join(' '), d.amount, cat(d.category).label].join(' ')).includes(q));
+  if (ui.filter === 'todo') out = out.filter(d => d.status === 'a_traiter');
+  if (ui.filter === 'echeance') out = out.filter(d => isISO(d.dueDate) && d.status !== 'fait');
+  if (ui.filter === 'garantie') out = out.filter(d => isISO(d.warrantyEnd) && daysTo(d.warrantyEnd) >= 0);
+  if (ui.filter === 'archive') out = out.filter(d => d.status === 'archive'); else if (ui.filter !== 'all') out = out.filter(d => d.status !== 'archive');
+  const cmp = { date: (a, b) => (b.docDate || '').localeCompare(a.docDate || '') || b.createdAt - a.createdAt, added: (a, b) => b.createdAt - a.createdAt, amount: (a, b) => (parseFloat(b.amount) || 0) - (parseFloat(a.amount) || 0), title: (a, b) => norm(a.title).localeCompare(norm(b.title), 'fr'), issuer: (a, b) => norm(a.issuer).localeCompare(norm(b.issuer), 'fr') }[ui.sort];
+  return [...out].sort(cmp);
+}
+function renderList(catKey) {
+  const c = catKey ? cat(catKey) : null;
+  $('#title').textContent = c ? `${c.icon} ${c.label}` : 'Tous les documents';
+  const base = catKey ? data.docs.filter(d => d.category === catKey) : data.docs;
+  const list = filterDocs(base);
+  const total = list.reduce((s, d) => s + (parseFloat(d.amount) || 0), 0);
+  const F = { all: 'Tous', todo: 'À traiter', echeance: 'Avec échéance', garantie: 'Sous garantie', archive: 'Archivés' };
+  view.innerHTML = `<div id="lst">
+    <label class="search">🔎<input id="q" value="${esc(ui.q)}" placeholder="Titre, émetteur, référence, montant…" enterkeyhint="search">${ui.q ? '<button class="chip" id="clearQ">✕</button>' : ''}</label>
+    <div class="chips">${Object.entries(F).map(([k, v]) => `<button class="chip ${ui.filter === k ? 'on' : ''}" data-f="${k}">${v}</button>`).join('')}</div>
+    <div class="field" style="margin:8px 0 0"><select id="sort">${Object.entries({ date: 'Date du document', added: 'Ajout récent', amount: 'Montant', title: 'Titre', issuer: 'Émetteur' }).map(([k, v]) => `<option value="${k}" ${ui.sort === k ? 'selected' : ''}>Tri : ${v}</option>`).join('')}</select></div>
+    <p class="hint">${list.length} document${list.length > 1 ? 's' : ''}${total ? ` · total ${money(total)}` : ''}</p>
+    ${list.map(docRow).join('') || `<div class="empty"><div class="big">${c ? c.icon : '🗂️'}</div><p>Aucun document ici.</p><button class="btn" id="emptyAdd">＋ Ajouter</button></div>`}</div>`;
+  let qt; $('#q').addEventListener('input', e => { clearTimeout(qt); qt = setTimeout(() => { ui.q = e.target.value; saveUI(); const pos = e.target.selectionStart; renderList(catKey); const q = $('#q'); q.focus(); q.setSelectionRange(pos, pos); }, 250); });
+  if ($('#clearQ')) $('#clearQ').onclick = e => { e.preventDefault(); ui.q = ''; saveUI(); renderList(catKey); };
+  view.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { ui.filter = b.dataset.f; saveUI(); renderList(catKey); });
+  $('#sort').onchange = e => { ui.sort = e.target.value; saveUI(); renderList(catKey); };
+  if ($('#emptyAdd')) $('#emptyAdd').onclick = () => openAddMenu(catKey);
+  bindEvents($('#lst'));
+}
+function renderAgenda() {
+  $('#title').textContent = 'Agenda';
+  const evs = events();
+  const groups = [['En retard', evs.filter(e => e.days < 0)], ['Cette semaine', evs.filter(e => e.days >= 0 && e.days <= 7)], ['Ce mois-ci', evs.filter(e => e.days > 7 && e.days <= 31)], ['Plus tard', evs.filter(e => e.days > 31)]];
+  view.innerHTML = `<div id="ag">${groups.filter(g => g[1].length).map(([t, l]) => `<h2 class="sec">${t} <span>${l.length}</span></h2>${l.map(evHTML).join('')}`).join('') || '<div class="empty"><div class="big">📅</div><p>Aucune échéance enregistrée.</p></div>'}
+    <p class="hint" style="margin-top:18px">🔔 exporte un rappel vers l'agenda de ton téléphone (alerte ${S.remindDays} jours avant).</p></div>`;
+  bindEvents($('#ag'));
+}
+function renderTodo() {
+  $('#title').textContent = 'À traiter';
+  const urgent = events({ horizon: S.remindDays });
+  const inbox = data.docs.filter(d => d.status === 'a_traiter' && !isISO(d.dueDate)).sort((a, b) => b.createdAt - a.createdAt);
+  view.innerHTML = `<div id="td">
+    <h2 class="sec">⏰ Urgent (≤ ${S.remindDays} j) <span>${urgent.length}</span></h2>${urgent.map(evHTML).join('') || '<p class="hint">Rien d’urgent.</p>'}
+    <h2 class="sec">📥 Documents à classer / traiter <span>${inbox.length}</span></h2>${inbox.map(docRow).join('') || '<p class="hint">Boîte de réception vide ✨</p>'}
+    ${inbox.length ? `<button class="btn ghost block" id="allDone" style="margin-top:8px">Tout marquer comme classé</button>` : ''}</div>`;
+  if ($('#allDone')) $('#allDone').onclick = () => { if (!confirm(`Marquer ${inbox.length} document(s) comme traités ?`)) return; for (const d of inbox) { d.status = 'fait'; d.updatedAt = now(); } touch(); render(); };
+  bindEvents($('#td'));
+}
+
+/* ---------- Détail ---------- */
+async function hydratePages(root, files) {
+  for (const [i, f] of files.entries()) {
+    const el = root.querySelector(`[data-page="${i}"]`); if (!el) continue;
+    if (f.type === 'application/pdf') continue;
+    const u = await fileURL(f); if (u) el.innerHTML = `<img src="${u}" alt="">`;
+  }
+}
+async function openFile(f) {
+  const w = window.open('', '_blank');
+  const u = await fileURL(f);
+  if (!u) { w?.close(); return toast('Fichier pas encore disponible sur cet appareil'); }
+  if (w) w.location.href = u; else location.href = u;
+}
+function openDetail(id) {
+  const d = getDoc(id); if (!d) return;
+  const c = cat(d.category);
+  const evs = events().filter(e => e.doc.id === d.id);
+  const rows = [['Classeur', `${c.icon} ${c.label}`], ['Émetteur', d.issuer], ['Date', frDate(d.docDate)], ['Montant', money(d.amount)], ['Référence', d.reference], ['Concerne', d.person],
+    ['Échéance', d.dueDate ? frDate(d.dueDate) + (d.renewal ? ` (${RENEW[d.renewal].toLowerCase()})` : '') : ''], ['Fin / expiration', frDate(d.endDate)], ['Fin de garantie', frDate(d.warrantyEnd)], ['Statut', STATUS[d.status]]].filter(r => r[1]);
+  const body = openSheet(d.title || 'Document', `
+    ${d.files?.length ? `<div class="pages">${d.files.map((f, i) => `<button class="page" data-page="${i}" data-view="${i}">${f.type === 'application/pdf' ? '<span class="pdf">📄</span>' : '<span class="pdf">🖼️</span>'}</button>`).join('')}</div>` : ''}
+    ${d.action && d.status === 'a_traiter' ? `<div class="todo">👉 ${esc(d.action)}</div>` : ''}
+    ${evs.map(evHTML).join('')}
+    ${d.summary ? `<p>${esc(d.summary)}</p>` : ''}
+    <dl class="kv">${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>
+    ${(d.tags || []).length ? `<div>${d.tags.map(t => `<span class="tag"># ${esc(t)}</span>`).join('')}</div>` : ''}
+    ${d.notes ? `<div class="card" style="margin:12px 0;white-space:pre-wrap">${esc(d.notes)}</div>` : ''}
+    ${budgetHTML(d)}
+    <div class="btns" style="margin-top:14px"><button class="btn" id="edit">✏️ Modifier</button>${d.status !== 'fait' ? `<button class="btn ghost" id="done">✅ Traité</button>` : `<button class="btn ghost" id="reopen">↩︎ À traiter</button>`}</div>
+    <div class="btns" style="margin-top:8px">${d.status !== 'archive' ? `<button class="btn ghost sm" id="arch">🗄 Archiver</button>` : ''}<button class="btn danger sm" id="del">🗑 Supprimer</button></div>
+    ${d.text ? `<details class="more"><summary>Texte extrait</summary><p class="hint" style="white-space:pre-wrap">${esc(d.text)}</p></details>` : ''}
+    ${(d.history || []).length ? `<details class="more"><summary>Historique</summary>${d.history.slice().reverse().map(h => `<div class="hint">${new Date(h.at).toLocaleDateString('fr-FR')} — ${esc(h.txt)}</div>`).join('')}</details>` : ''}`);
+  hydratePages(body, d.files || []);
+  body.querySelectorAll('[data-view]').forEach(b => b.onclick = () => openFile(d.files[+b.dataset.view]));
+  body.querySelectorAll('[data-done]').forEach(b => b.onclick = e => { e.stopPropagation(); markDone(d); render(); openDetail(d.id); });
+  body.querySelectorAll('[data-ics]').forEach(b => b.onclick = e => { e.stopPropagation(); const [, kind] = b.dataset.ics.split('|'); icsFor(d, kind); });
+  $('#edit').onclick = () => openForm(d);
+  if ($('#bToggle')) $('#bToggle').onclick = () => { d.budget = d.budget === 'exclu' ? '' : 'exclu'; addHistory(d, d.budget ? 'Exclu du budget' : 'Réintégré au budget'); upsertDoc(d); openDetail(d.id); };
+  if ($('#done')) $('#done').onclick = () => { markDone(d); render(); openDetail(d.id); };
+  if ($('#reopen')) $('#reopen').onclick = () => { d.status = 'a_traiter'; addHistory(d, 'Rouvert'); upsertDoc(d); render(); openDetail(d.id); };
+  if ($('#arch')) $('#arch').onclick = () => { d.status = 'archive'; addHistory(d, 'Archivé'); upsertDoc(d); render(); closeSheet(); toast('Archivé'); };
+  $('#del').onclick = () => { if (confirm(`Supprimer « ${d.title} » et ses fichiers ?`)) { deleteDoc(d.id); closeSheet(); render(); toast('Supprimé'); } };
+}
+
+/* ---------- Passerelle budget (bêta) ---------- */
+function budgetHTML(d) {
+  const ms = mouvementsDuDocument({ ...d, budget: '' });
+  if (!ms.length && d.budget !== 'exclu') return '';
+  if (d.budget === 'exclu') return `<div class="card" style="margin:12px 0"><b>💶 Budget</b> <span class="pill">Exclu</span><p class="hint" style="margin:6px 0 8px">Ce document n'est pas transmis à l'appli Budget.</p><button class="btn ghost sm" id="bToggle">Réintégrer au budget</button></div>`;
+  const line = m => {
+    const a = budgetAcks[m.key];
+    const st = !a ? '<span class="pill warn">En attente d’import</span>' : a.empreinte !== empreinte(m) ? '<span class="pill warn">Modifié → à réimporter</span>' : '<span class="pill ok">Dans le budget ✓</span>';
+    return `<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;margin-top:6px"><span>${m.statut === 'payee' ? 'Payé' : 'Prévu'} le ${frDate(m.date)} · <b>${money(m.montant)}</b></span>${st}</div>`;
+  };
+  return `<div class="card" style="margin:12px 0"><b>💶 Budget</b> <span class="hint">· ${esc(ms[0].categorieBudget)} · bêta</span>${ms.slice(-4).map(line).join('')}<div style="margin-top:10px"><button class="btn ghost sm" id="bToggle">Exclure du budget</button></div></div>`;
+}
+
+/* ---------- Formulaire ---------- */
+function openForm(src, { pages = [], isNew = !getDoc(src.id) } = {}) {
+  const d = structuredClone(src);
+  const newPages = [...pages]; // pages pas encore stockées : {blob,type,name,url}
+  const removed = [];
+  const issuers = [...new Set(data.docs.map(x => x.issuer).filter(Boolean))];
+  const people = [...new Set(data.docs.map(x => x.person).filter(Boolean))];
+  const allTags = [...new Set(data.docs.flatMap(x => x.tags || []))];
+  const f = (id, label, val, attrs = '') => `<div class="field"><label for="${id}">${label}</label><input id="${id}" value="${esc(val)}" ${attrs}></div>`;
+  const sel = (id, label, obj, val) => `<div class="field"><label for="${id}">${label}</label><select id="${id}">${Object.entries(obj).map(([k, v]) => `<option value="${k}" ${k === (val || '') ? 'selected' : ''}>${typeof v === 'object' ? v.icon + ' ' + v.label : v}</option>`).join('')}</select></div>`;
+  const body = openSheet(isNew ? 'Nouveau document' : 'Modifier', `
+    <div class="pages" id="pg"></div>
+    ${f('fTitle', 'Titre *', d.title)}
+    <div class="cols">${sel('fCat', 'Classeur', CATS, d.category)}${sel('fStatus', 'Statut', STATUS, d.status)}</div>
+    <div class="cols"><div class="field"><label for="fIssuer">Émetteur</label><input id="fIssuer" list="dlI" value="${esc(d.issuer)}"><datalist id="dlI">${issuers.map(s => `<option value="${esc(s)}">`).join('')}</datalist></div>${f('fDate', 'Date du document', d.docDate, 'type="date"')}</div>
+    <div class="cols">${f('fAmount', 'Montant €', d.amount, 'inputmode="decimal"')}${f('fRef', 'Référence / n°', d.reference)}</div>
+    <div class="card" style="margin-bottom:12px"><b style="font-size:13px">⏰ Dates à surveiller</b>
+      <div class="cols" style="margin-top:8px">${f('fDue', 'Échéance (payer / répondre)', d.dueDate, 'type="date"')}${sel('fRenew', 'Récurrence', RENEW, d.renewal)}</div>
+      <div class="cols">${f('fEnd', 'Fin de contrat / expiration', d.endDate, 'type="date"')}${f('fWarr', 'Fin de garantie', d.warrantyEnd, 'type="date"')}</div>
+      <div class="btns"><button class="btn ghost sm" data-w="24">Garantie 2 ans</button><button class="btn ghost sm" data-w="12">1 an</button><button class="btn ghost sm" data-w="36">3 ans</button></div>
+    </div>
+    ${f('fAction', 'Action à faire', d.action, 'placeholder="ex. Payer, résilier, envoyer…"')}
+    <details class="more" ${isNew ? '' : 'open'}><summary>Plus de détails</summary>
+      <div class="field"><label for="fPerson">Concerne</label><input id="fPerson" list="dlP" value="${esc(d.person)}"><datalist id="dlP">${people.map(s => `<option value="${esc(s)}">`).join('')}</datalist></div>
+      <div class="field"><label for="fTags">Tags (virgules)</label><input id="fTags" list="dlT" value="${esc((d.tags || []).join(', '))}"><datalist id="dlT">${allTags.map(s => `<option value="${esc(s)}">`).join('')}</datalist></div>
+      <div class="field"><label for="fSummary">Résumé</label><textarea id="fSummary">${esc(d.summary)}</textarea></div>
+    </details>
+    <div class="field"><label for="fNotes">Notes</label><textarea id="fNotes">${esc(d.notes)}</textarea></div>
+    <div class="btns"><button class="btn" id="fSave">Enregistrer</button>${isNew ? '' : '<button class="btn ghost" id="fCancel">Annuler</button>'}</div>`,
+    { onClose: () => setTimeout(() => newPages.forEach(p => URL.revokeObjectURL(p.url)), 4000) });
+  const drawPages = () => {
+    const kept = (d.files || []).filter(x => !removed.includes(x.path));
+    $('#pg').innerHTML = kept.map((x, i) => `<div class="page" data-page="${i}">${x.type === 'application/pdf' ? '<span class="pdf">📄</span>' : '<span class="pdf">🖼️</span>'}<span class="rm" data-rmold="${esc(x.path)}">✕</span></div>`).join('')
+      + newPages.map((p, i) => `<div class="page">${p.type === 'application/pdf' ? '<span class="pdf">📄</span>' : `<img src="${p.url}" alt="">`}<span class="rm" data-rmnew="${i}">✕</span></div>`).join('')
+      + `<button class="page add" id="addPage" title="Ajouter une page">＋</button>`;
+    hydratePages($('#pg'), kept);
+  };
+  drawPages();
+  $('#pg').addEventListener('click', async e => {
+    const o = e.target.closest('[data-rmold]'); if (o) { removed.push(o.dataset.rmold); drawPages(); return; }
+    const n = e.target.closest('[data-rmnew]'); if (n) { newPages.splice(+n.dataset.rmnew, 1); drawPages(); return; }
+    if (e.target.closest('#addPage')) { const files = await pickFiles({ multiple: true }); for (const fl of files) { try { newPages.push(await preparePage(fl)); } catch (er) { toast(er.message); } } drawPages(); }
+  });
+  body.querySelectorAll('[data-w]').forEach(b => b.onclick = () => { const base = $('#fDate').value || todayISO(); $('#fWarr').value = addMonths(base, +b.dataset.w); });
+  if ($('#fCancel')) $('#fCancel').onclick = () => openDetail(d.id);
+  $('#fSave').onclick = async () => {
+    const v = id => $('#' + id).value.trim();
+    if (!v('fTitle')) return toast('Le titre est obligatoire');
+    const btn = $('#fSave'); btn.disabled = true;
+    Object.assign(d, { title: v('fTitle'), category: v('fCat'), status: v('fStatus'), issuer: v('fIssuer'), docDate: v('fDate'), amount: v('fAmount').replace(',', '.').replace(/[^\d.\-]/g, ''), reference: v('fRef'),
+      dueDate: v('fDue'), renewal: v('fRenew'), endDate: v('fEnd'), warrantyEnd: v('fWarr'), action: v('fAction'), person: v('fPerson'), tags: v('fTags').split(',').map(s => s.trim()).filter(Boolean), summary: v('fSummary'), notes: v('fNotes') });
+    d.files = (d.files || []).filter(x => !removed.includes(x.path));
+    for (const p of removed) removeMedia(p);
+    for (const p of newPages) d.files.push(await storeFile(d.id, p.blob, p.type, p.name));
+    if (isNew) addHistory(d, d.source === 'ia' ? 'Ajouté par scan IA' : 'Ajouté');
+    upsertDoc(d); render(); openDetail(d.id); toast(isNew ? 'Document ajouté ✓' : 'Enregistré ✓');
+  };
+}
+
+/* ---------- Ajout : menu + capture multi-pages ---------- */
+function openAddMenu(catKey) {
+  openSheet('Ajouter un document', `
+    <div class="aibox"><b>✨ Scan intelligent</b><p>Photographie toutes les pages (ou importe un PDF) : l'IA remplit le titre, l'émetteur, le montant, les échéances, la garantie et l'action à faire.</p></div>
+    <div class="btns" style="flex-direction:column">
+      <button class="btn" id="aCam">📷 Photographier un document</button>
+      <button class="btn ghost" id="aGal">🖼️ Photos ou PDF existants</button>
+      <button class="btn ghost" id="aMan">✍️ Saisie manuelle (sans fichier)</button>
+    </div>`);
+  $('#aCam').onclick = () => openCapture({ camera: true, catKey });
+  $('#aGal').onclick = () => openCapture({ camera: false, catKey });
+  $('#aMan').onclick = () => openForm({ ...blankDoc(), category: catKey || 'autre', status: 'fait' }, { isNew: true });
+}
+async function openCapture({ camera, catKey }) {
+  const pages = [];
+  const files = await pickFiles({ camera, multiple: !camera });
+  for (const fl of files) { try { pages.push(await preparePage(fl)); } catch (e) { toast(e.message); } }
+  if (!pages.length) return;
+  const draw = () => {
+    $('#cp').innerHTML = pages.map((p, i) => `<div class="page">${p.type === 'application/pdf' ? '<span class="pdf">📄</span>' : `<img src="${p.url}" alt="">`}<span class="rm" data-rm="${i}">✕</span></div>`).join('') + `<button class="page add" id="more">＋</button>`;
+    $('#cn').textContent = `${pages.length} page${pages.length > 1 ? 's' : ''}`;
+  };
+  const body = openSheet('Document scanné', `
+    <p class="hint" style="margin-top:0">Ajoute les autres pages (recto/verso, annexes) avant l'analyse. <b id="cn"></b></p>
+    <div class="pages" id="cp"></div>
+    <div class="btns" style="flex-direction:column;margin-top:8px">
+      <button class="btn" id="cAi">✨ Analyser avec l'IA</button>
+      <button class="btn ghost" id="cMore">📷 Ajouter une page</button>
+      <button class="btn ghost" id="cMan">✍️ Remplir moi-même</button>
+    </div>`);
+  draw();
+  const addMore = async cam => { const fs = await pickFiles({ camera: cam, multiple: !cam }); for (const fl of fs) { try { pages.push(await preparePage(fl)); } catch (e) { toast(e.message); } } draw(); };
+  $('#cp').addEventListener('click', e => { const r = e.target.closest('[data-rm]'); if (r) { pages.splice(+r.dataset.rm, 1); draw(); } else if (e.target.closest('#more')) addMore(false); });
+  $('#cMore').onclick = () => addMore(true);
+  $('#cMan').onclick = () => openForm({ ...blankDoc(), category: catKey || 'autre' }, { pages, isNew: true });
+  $('#cAi').onclick = async () => {
+    if (!pages.length) return toast('Ajoute au moins une page');
+    if (!S.aiKey) { toast("Ajoute d'abord ta clé Gemini"); return openSettings(); }
+    body.innerHTML = `<div class="pages">${pages.map(p => `<div class="page">${p.type === 'application/pdf' ? '<span class="pdf">📄</span>' : `<img src="${p.url}" alt="">`}</div>`).join('')}</div><div class="spinner"></div><p class="hint" style="text-align:center">Lecture du document…</p>`;
+    try {
+      const x = await aiExtract(pages, t => { const h = body.querySelector('p.hint'); if (h) h.textContent = t; });
+      const d = { ...blankDoc(), source: 'ia', status: 'a_traiter' };
+      d.category = CATS[x.category] ? x.category : (catKey || 'autre');
+      for (const k of ['title', 'issuer', 'reference', 'person', 'action', 'summary', 'text']) if (x[k]) d[k] = String(x[k]).trim();
+      for (const k of ['docDate', 'dueDate', 'endDate', 'warrantyEnd']) d[k] = isISO(x[k]) ? x[k] : (k === 'docDate' ? todayISO() : '');
+      d.amount = x.amount ? String(x.amount).replace(',', '.').replace(/[^\d.\-]/g, '') : '';
+      d.renewal = RENEW[x.renewal] !== undefined ? x.renewal : '';
+      d.tags = Array.isArray(x.tags) ? x.tags.slice(0, 8) : [];
+      if (!d.dueDate && !d.action) d.status = 'fait';
+      openForm(d, { pages, isNew: true });
+      toast(`Vérifie les infos puis enregistre${typeof x.confidence === 'number' ? ` (confiance ${Math.round(x.confidence * 100)} %)` : ''}`);
+    } catch (e) {
+      console.error(e); toast(e.message);
+      openForm({ ...blankDoc(), category: catKey || 'autre' }, { pages, isNew: true });
+    }
+  };
+}
+
+/* ---------- Réglages ---------- */
+function download(name, content, type) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([content], { type })); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 3000); }
+function toCSV(docs) {
+  const cols = ['category', 'title', 'issuer', 'docDate', 'amount', 'reference', 'dueDate', 'renewal', 'endDate', 'warrantyEnd', 'status', 'action', 'person', 'tags', 'summary', 'notes'];
+  const q = v => { const s = String(v ?? ''); return /[",\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+  return '﻿' + [cols.join(','), ...docs.map(d => cols.map(k => q(k === 'tags' ? (d.tags || []).join('; ') : k === 'category' ? cat(d.category).label : d[k])).join(','))].join('\n');
+}
+function openSettings() {
+  const f = (id, label, val, attrs = '') => `<div class="field"><label for="${id}">${label}</label><input id="${id}" value="${esc(val)}" ${attrs}></div>`;
+  openSheet('Réglages', `
+    <h3 style="margin:4px 0 8px">☁︎ Stockage GitHub (dépôt privé)</h3>
+    <p class="hint" style="margin-top:0">Repris automatiquement des réglages de l'accueil. Données dans un JSON dédié, fichiers dans un dossier dédié.</p>
+    <div class="cols">${f('sOwner', 'Propriétaire', S.owner, 'autocapitalize="off"')}${f('sRepo', 'Dépôt', S.repo, 'autocapitalize="off"')}</div>
+    <div class="cols">${f('sBranch', 'Branche', S.branch, 'autocapitalize="off"')}${f('sPath', 'Fichier JSON', S.path, 'autocapitalize="off"')}</div>
+    ${f('sMedia', 'Dossier des fichiers', S.mediaDir, 'autocapitalize="off"')}
+    ${f('sToken', 'Jeton GitHub (Contents : read & write)', S.token, 'type="password" autocomplete="off"')}
+    <h3 style="margin:14px 0 8px">✨ IA</h3>
+    ${f('sAiKey', 'Clé API Gemini (partagée par toutes les applis)', S.aiKey, 'type="password" autocomplete="off" placeholder="AIza…"')}
+    <div class="field"><label for="sAiModel">Modèle</label><select id="sAiModel">${AI_MODELS.map(([v, l]) => `<option value="${v}" ${v === S.aiModel ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+    <h3 style="margin:14px 0 8px">⏰ Rappels</h3>
+    ${f('sRemind', 'Prévenir combien de jours avant ?', S.remindDays, 'type="number" min="1" max="60"')}
+    ${f('sMaskNames', 'Noms à masquer avant l’envoi à l’IA', S.maskNames || '', 'placeholder="Ex. prénoms et nom de famille" autocapitalize="words"')}
+    <p class="hint">Séparés par des virgules. Ils restent sur ce téléphone et sont remplacés par [PERSONNE] dans le texte envoyé à Gemini.</p>
+    ${f('sHub', "Adresse de l'accueil", S.hubUrl)}
+    <div class="card" style="margin-bottom:12px"><b>💶 Passerelle Budget (bêta ${PASSERELLE_VERSION})</b><p class="hint" style="margin:6px 0 8px">Les montants (échéances prévues, paiements faits, achats) sont proposés à l'appli Budget. Elle confirme ce qu'elle a importé dans <code>JSON_PASSERELLE.json</code>.</p><a class="btn ghost sm" href="./passerelle-test.html">Ouvrir le banc d'essai</a></div>
+    <div class="btns" style="margin-bottom:10px"><button class="btn ghost sm" id="sTest">Tester GitHub</button><button class="btn ghost sm" id="sJson">⬇︎ Sauvegarde JSON</button><button class="btn ghost sm" id="sCsv">⬇︎ CSV</button></div>
+    <button class="btn block" id="sSave">Enregistrer</button>
+    <button class="btn ghost block" id="sLogout" style="margin-top:12px;color:#ff4f5e">Se déconnecter de cet appareil</button>
+    <p class="hint">Version ${APP_VERSION} · ${data.docs.length} documents. Le jeton et la clé restent sur cet appareil. Garde le dépôt <b>privé</b> : il contient tes documents.</p>`);
+  const collect = () => ({ ...S, owner: $('#sOwner').value.trim(), repo: $('#sRepo').value.trim(), branch: $('#sBranch').value.trim() || 'main', path: $('#sPath').value.trim() || DEFAULT_SETTINGS.path, mediaDir: $('#sMedia').value.trim() || DEFAULT_SETTINGS.mediaDir, token: $('#sToken').value.trim(), aiKey: $('#sAiKey').value.trim(), aiModel: $('#sAiModel').value, remindDays: Math.min(60, Math.max(1, parseInt($('#sRemind').value) || 7)), hubUrl: $('#sHub').value.trim() || './index.html', maskNames: $('#sMaskNames').value.trim() });
+  const apply = () => { S = collect(); write(LS.settings, S); data.prefs = { maskNames: S.maskNames || '', remindDays: S.remindDays }; data.prefsAt = now(); touch(); write(LS.shared, { ...(read(LS.shared, {}) || {}), owner: S.owner, repo: S.repo, branch: S.branch, token: S.token }); write(LS.ai, { key: S.aiKey, model: S.aiModel }); $('#hubLink').href = S.hubUrl; };
+  $('#sTest').onclick = async () => { apply(); if (!gh.ok()) return toast('Renseigne propriétaire, dépôt et jeton'); try { const r = await fetch(`https://api.github.com/repos/${S.owner}/${S.repo}`, { headers: gh.h() }); if (!r.ok) throw new Error(await errMsg(r)); const j = await r.json(); toast(`✓ ${j.full_name}${j.private ? ' (privé)' : ' — ⚠︎ dépôt PUBLIC'}`); } catch (e) { toast('✗ ' + e.message); } };
+  $('#sJson').onclick = () => download(`paperasse-${todayISO()}.json`, JSON.stringify(data, null, 1), 'application/json');
+  $('#sCsv').onclick = () => download(`paperasse-${todayISO()}.csv`, toCSV(data.docs), 'text/csv');
+  $('#sLogout').onclick = () => closeSheet(() => kitLogout());
+  $('#sSave').onclick = () => { apply(); closeSheet(); render(); toast('Réglages enregistrés'); scheduleSync(200); };
+}
+
+/* ---------- Démarrage ---------- */
+$('#hubLink').href = S.hubUrl;
+$('#settingsBtn').onclick = openSettings;
+$('#syncBtn').onclick = () => gh.ok() ? sync() : openSettings();
+$('#fab').onclick = () => { const [r, a] = route(); openAddMenu(r === 'c' ? a : ''); };
+$$('.bottom [data-nav]').forEach(b => b.onclick = () => { if (location.hash === b.dataset.nav || (!location.hash && b.dataset.nav === '#/')) render(); else location.hash = b.dataset.nav; });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { render(); if (gh.ok()) sync(); } });
+render();
+if (gh.ok()) sync(); else setSync('local', 'Configure GitHub dans les réglages');
+if (location.hash === '#scan') { history.replaceState(null, '', '#/'); openAddMenu(''); }
+deepLink();
+refreshAcks();
+</script>
+</body>
+</html>

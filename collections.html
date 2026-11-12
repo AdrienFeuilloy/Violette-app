@@ -1,0 +1,1148 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffc21a">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Collections</title>
+<link rel="stylesheet" href="ui/kit.css">
+<style>
+:root{--violet:var(--acc);--violet-2:var(--acc);--violet-soft:var(--soft);--violet-ink:var(--acc);--muted:var(--mut);--ok:#14a06b;--warn:#e08a00;--bad:#ff4f5e;--r:18px;--safe-b:env(safe-area-inset-bottom,0px)}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+button,input,select,textarea{font:inherit;color:inherit}
+a{color:var(--violet)}
+.top{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:8px;padding:10px 12px;padding-top:max(10px,env(safe-area-inset-top));background:linear-gradient(135deg,var(--acc),var(--acc) 60%,var(--acc));color:#fff}
+.top h1{flex:1;margin:0;font-size:19px;font-weight:700;letter-spacing:.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.icon-btn{border:0;background:rgba(255,255,255,.16);color:inherit;width:38px;height:38px;border-radius:12px;display:grid;place-items:center;font-size:18px;cursor:pointer;text-decoration:none;flex:none}
+.sheet .icon-btn{background:var(--violet-soft);color:var(--violet-ink)}
+.sync{border:0;background:rgba(255,255,255,.16);color:#fff;border-radius:99px;padding:6px 10px;display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer}
+.sync .dot{width:8px;height:8px;border-radius:50%;background:#cbd5e1}
+.sync.ok .dot{background:#4ade80}.sync.busy .dot,.sync.pending .dot{background:#fbbf24;animation:pulse 1s infinite}.sync.err .dot{background:#f87171}
+@keyframes pulse{50%{opacity:.3}}
+main{padding:14px 14px calc(96px + var(--safe-b));max-width:1100px;margin:0 auto}
+.bottom{position:fixed;left:0;right:0;bottom:0;z-index:20;display:flex;justify-content:space-around;align-items:center;background:var(--card);border-top:1px solid var(--line);padding:6px 4px calc(6px + var(--safe-b))}
+.bottom button{border:0;background:none;display:flex;flex-direction:column;align-items:center;gap:1px;font-size:20px;color:var(--muted);padding:4px 10px;cursor:pointer;min-width:58px}
+.bottom button span{font-size:11px}
+.bottom button.on{color:var(--violet)}
+.bottom .fab{width:56px;height:56px;border-radius:18px;background:linear-gradient(135deg,var(--acc),var(--acc));color:#fff;font-size:30px;margin-top:-26px;box-shadow:0 6px 18px rgba(109,40,217,.4);justify-content:center;min-width:0}
+h2.sec{font-size:15px;margin:22px 2px 10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.6px;display:flex;align-items:center;justify-content:space-between}
+.card{background:var(--card);border-radius:var(--r);box-shadow:var(--shadow);padding:14px}
+.search{display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:0 12px;box-shadow:var(--shadow)}
+.search input{flex:1;border:0;background:none;padding:12px 0;outline:none;min-width:0}
+.chips{display:flex;gap:8px;overflow-x:auto;padding:10px 0 4px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;border:1px solid var(--line);background:var(--card);border-radius:99px;padding:6px 12px;font-size:13px;cursor:pointer;white-space:nowrap}
+.chip.on{background:var(--violet);border-color:var(--violet);color:#fff}
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px}
+.kpi{background:var(--card);border-radius:14px;padding:12px;box-shadow:var(--shadow)}
+.kpi b{display:block;font-size:22px;color:var(--violet)}
+.kpi span{font-size:12px;color:var(--muted)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+.tile{position:relative;border:0;border-radius:18px;padding:14px;min-height:118px;color:#fff;text-align:left;cursor:pointer;display:flex;flex-direction:column;justify-content:space-between;box-shadow:var(--shadow);overflow:hidden}
+.tile .ic{font-size:28px}
+.tile b{font-size:16px;display:block}
+.tile small{opacity:.85}
+.tile.add{background:var(--card);color:var(--violet);border:2px dashed var(--violet-2);align-items:center;justify-content:center;text-align:center}
+.row-scroll{display:flex;gap:10px;overflow-x:auto;padding-bottom:6px;scrollbar-width:none}
+.row-scroll::-webkit-scrollbar{display:none}
+.row-scroll .it{width:104px;flex:none}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(108px,1fr));gap:12px}
+.it{cursor:pointer;min-width:0}
+.cover{position:relative;aspect-ratio:2/3;border-radius:10px;overflow:hidden;background:var(--violet-soft);box-shadow:var(--shadow);display:grid;place-items:center}
+.cover img{width:100%;height:100%;object-fit:cover;display:block}
+.cover .ph{display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px;text-align:center;font-size:11px;color:#fff;width:100%;height:100%;justify-content:center}
+.cover .ph i{font-style:normal;font-size:26px}
+.badge{position:absolute;top:6px;left:6px;font-size:10px;font-weight:700;padding:2px 6px;border-radius:99px;background:rgba(0,0,0,.6);color:#fff}
+.badge.wish{background:#db2777}.badge.loan{background:#d97706}.badge.pre{background:#0891b2}
+.vol{position:absolute;bottom:6px;right:6px;font-size:11px;font-weight:700;padding:2px 7px;border-radius:8px;background:var(--violet);color:#fff}
+.it .t{font-size:13px;font-weight:600;margin-top:6px;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.it .c{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.list .li{display:flex;gap:12px;align-items:center;background:var(--card);border-radius:14px;padding:8px;box-shadow:var(--shadow);margin-bottom:8px;cursor:pointer}
+.list .li .cover{width:52px;flex:none;border-radius:8px}
+.list .li .cover .ph i{font-size:18px}.list .li .cover .ph span{display:none}
+.li .meta{flex:1;min-width:0}
+.li .meta b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.li .meta small{color:var(--muted);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.toolbar{display:flex;gap:8px;align-items:center;margin-top:10px}
+.toolbar select{flex:1;border:1px solid var(--line);background:var(--card);border-radius:12px;padding:8px 10px}
+.seg{display:flex;background:var(--violet-soft);border-radius:12px;padding:3px}
+.seg button{border:0;background:none;padding:6px 10px;border-radius:9px;cursor:pointer;color:var(--violet-ink)}
+.seg button.on{background:var(--card);box-shadow:var(--shadow)}
+.count{font-size:12px;color:var(--muted);margin:10px 2px}
+.empty{text-align:center;color:var(--muted);padding:40px 16px}
+.empty .big{font-size:44px}
+.btn{border:0;border-radius:12px;padding:11px 16px;font-weight:600;cursor:pointer;background:var(--violet);color:#fff;display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.btn.ghost{background:var(--violet-soft);color:var(--violet-ink)}
+.btn.danger{background:#fee2e2;color:#b91c1c}
+.btn.sm{padding:7px 11px;font-size:13px;border-radius:10px}
+.btn.block{width:100%}
+.btn:disabled{opacity:.5}
+.btns{display:flex;gap:8px;flex-wrap:wrap}
+.btns .btn{flex:1}
+/* sheet */
+.sheet-wrap{position:fixed;inset:0;z-index:50;background:rgba(15,10,30,.45);display:flex;align-items:flex-end;justify-content:center;animation:fade .15s}
+.sheet-wrap[hidden]{display:none}
+.sheet{background:var(--bg);width:100%;max-width:640px;max-height:92vh;border-radius:22px 22px 0 0;display:flex;flex-direction:column;animation:up .2s ease-out}
+@media (min-width:700px){.sheet-wrap{align-items:center}.sheet{border-radius:22px;max-height:88vh}}
+.sheet-head{display:flex;align-items:center;gap:10px;padding:14px 16px 8px}
+.sheet-head h2{flex:1;margin:0;font-size:18px}
+.sheet-body{overflow-y:auto;padding:4px 16px calc(20px + var(--safe-b))}
+@keyframes up{from{transform:translateY(40px);opacity:.4}}
+@keyframes fade{from{opacity:0}}
+.field{margin-bottom:12px}
+.field label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin:0 0 4px 2px}
+.field input,.field select,.field textarea{width:100%;border:1px solid var(--line);background:var(--card);border-radius:12px;padding:10px 12px;outline:none}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--violet-2);box-shadow:0 0 0 3px rgba(139,92,246,.18)}
+.field textarea{min-height:80px;resize:vertical}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.cols3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.hint{font-size:12px;color:var(--muted)}
+.stars{display:flex;gap:4px;font-size:24px}
+.stars button{border:0;background:none;cursor:pointer;color:#d4d0e2;padding:0}
+.stars button.on{color:#f59e0b}
+.menu{display:grid;gap:10px}
+.menu button{display:flex;gap:14px;align-items:center;text-align:left;border:0;background:var(--card);border-radius:16px;padding:14px;box-shadow:var(--shadow);cursor:pointer}
+.menu button .ic{font-size:26px;width:46px;height:46px;border-radius:14px;display:grid;place-items:center;background:var(--violet-soft);flex:none}
+.menu button.ai .ic{background:linear-gradient(135deg,var(--acc),#ec4899);color:#fff}
+.menu button b{display:block}.menu button small{color:var(--muted)}
+.detail-top{display:flex;gap:14px}
+.detail-top .cover{width:120px;flex:none}
+.detail-top h3{margin:0 0 4px;font-size:19px;line-height:1.25}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:14px;margin:14px 0}
+.kv dt{color:var(--muted)}.kv dd{margin:0}
+.tag{display:inline-block;background:var(--violet-soft);color:var(--violet-ink);border-radius:99px;padding:2px 9px;font-size:12px;margin:2px 4px 2px 0}
+.loanbox{background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:14px;padding:12px;margin:10px 0}
+html[data-theme=dark] .loanbox-x{}@media all{html[data-theme=dark] .loanbox{background:#2a1d10;border-color:#5a3b17;color:#fdba74}}
+.overdue{color:var(--bad);font-weight:700}
+.cand{background:var(--card);border-radius:16px;padding:12px;box-shadow:var(--shadow);margin-bottom:12px}
+.cand.off{opacity:.45}
+.cand-head{display:flex;gap:12px}
+.cand-head .cover{width:78px;flex:none}
+.cand-head .f{flex:1;min-width:0}
+.cand-head .f input{width:100%;border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:7px 9px;margin-bottom:6px}
+.covopts{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.covopts .chip{padding:4px 10px;font-size:12px}
+.warn{font-size:12px;color:var(--warn);font-weight:600}
+.conf{font-size:11px;padding:2px 7px;border-radius:99px;background:var(--violet-soft);color:var(--violet-ink)}
+.scanner{position:relative;border-radius:16px;overflow:hidden;background:#000;aspect-ratio:4/3}
+.scanner video{width:100%;height:100%;object-fit:cover}
+.scanner .aim{position:absolute;left:12%;right:12%;top:38%;bottom:38%;border:3px solid rgba(167,139,250,.95);border-radius:12px;box-shadow:0 0 0 999px rgba(0,0,0,.35)}
+.spinner{width:42px;height:42px;border:4px solid var(--violet-soft);border-top-color:var(--violet);border-radius:50%;animation:spin 1s linear infinite;margin:20px auto}
+@keyframes spin{to{transform:rotate(360deg)}}
+.bars .bar{display:flex;align-items:center;gap:10px;margin:8px 0;font-size:13px}
+.bars .bar span:first-child{width:120px;flex:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bars .bar .b{flex:1;height:10px;background:var(--violet-soft);border-radius:99px;overflow:hidden}
+.bars .bar .b i{display:block;height:100%;background:linear-gradient(90deg,var(--acc),var(--acc));border-radius:99px}
+.bars .bar em{font-style:normal;width:44px;text-align:right;color:var(--muted)}
+.gap{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
+.gap:last-child{border:0}
+.toast{position:fixed;left:50%;bottom:calc(90px + var(--safe-b));transform:translateX(-50%) translateY(20px);background:#1e1b2e;color:#fff;padding:10px 16px;border-radius:12px;font-size:14px;opacity:0;pointer-events:none;transition:.25s;z-index:60;max-width:90vw;text-align:center}
+.toast.show{opacity:1;transform:translateX(-50%)}
+.preview-img{width:100%;max-height:260px;object-fit:contain;border-radius:14px;background:#000}
+details.more summary{cursor:pointer;color:var(--violet);font-weight:600;margin:6px 0 12px}
+
+/* --- Habillage « Gestion quotidien » --- */
+.k-hero .sync{border:0;height:36px;border-radius:12px;padding:0 10px;background:rgba(255,253,248,.72);color:#26233a;font-size:11.5px;font-weight:700;display:flex;align-items:center;gap:6px;backdrop-filter:blur(6px)}
+.k-hero .icon-btn{border:0;width:36px;height:36px;border-radius:12px;background:rgba(255,253,248,.72);color:#26233a;display:grid;place-items:center;font-size:16px}
+html[data-theme=dark] .k-hero .sync,html[data-theme=dark] .k-hero .icon-btn{background:rgba(33,31,44,.7);color:#f1ede4}
+main{position:relative;z-index:1}
+.bottom .fab{background:var(--acc)!important;box-shadow:0 6px 16px rgba(0,0,0,.18)!important}
+.card,.kpi,.tile,.doc,.ev,.li,.cand,.k-stat{box-shadow:var(--shadow)}
+.tile{color:#fff}
+.aibox{background:var(--acc)!important}
+.menu button.ai .ic{background:var(--acc)!important}
+</style>
+</head>
+<body>
+<header id="hero"></header>
+<div id="topActions" data-keep style="display:none"><button id="syncBtn" class="sync" title="Synchroniser maintenant"><span class="dot"></span><span id="syncTxt">Local</span></button><button id="settingsBtn" class="icon-btn" aria-label="Réglages">⚙︎</button></div>
+<a id="hubLink" hidden></a><span id="title" hidden></span>
+<main id="view"></main>
+<nav class="bottom">
+  <button data-nav="#/">🏠<span>Accueil</span></button>
+  <button data-nav="#/all">📚<span>Tout</span></button>
+  <button id="fab" class="fab" aria-label="Ajouter">＋</button>
+  <button data-nav="#/suivi">🤝<span>Suivi</span></button>
+  <button data-nav="#/stats">📊<span>Stats</span></button>
+</nav>
+<div id="sheetWrap" class="sheet-wrap" hidden>
+  <div class="sheet" role="dialog" aria-modal="true">
+    <div class="sheet-head"><h2 id="sheetTitle"></h2><button class="icon-btn" id="sheetClose" aria-label="Fermer">✕</button></div>
+    <div id="sheetBody" class="sheet-body"></div>
+  </div>
+</div>
+<div id="toast" class="toast"></div>
+
+<script type="module">
+import { initApp as kitInit, hero as kitHero, aiAsk as kitAI, AI_MODELS, AI_DEFAULT, logoutDevice as kitLogout } from './ui/kit.js';
+kitInit('collections');
+
+/* =========================================================
+   Collections — sous-app du hub « Gestion quotidien »
+   Données : JSON dans le dépôt GitHub privé (même dépôt que Violette)
+   Images  : fichiers JPEG dans un dossier du même dépôt
+   ========================================================= */
+const APP_VERSION = '1.0.0';
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+const now = () => Date.now();
+const norm = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+const read = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } };
+const write = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { console.warn('localStorage', e); } };
+const fmtDate = ts => ts ? new Date(ts).toLocaleDateString('fr-FR') : '';
+const money = n => (n || n === 0) && n !== '' ? Number(n).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' }) : '';
+const todayISO = () => new Date().toISOString().slice(0, 10);
+
+const TYPES = {
+  livre:       { label: 'Livres',          icon: '📖', creator: 'Auteur',       color: '#7c3aed' },
+  bd:          { label: 'BD',              icon: '💬', creator: 'Auteurs',      color: '#db2777' },
+  manga:       { label: 'Mangas',          icon: '🏯', creator: 'Mangaka',      color: '#e11d48' },
+  musique:     { label: 'Musique',         icon: '💿', creator: 'Artiste',      color: '#0891b2' },
+  film:        { label: 'Films & séries',  icon: '🎬', creator: 'Réalisateur',  color: '#ea580c' },
+  jeu_video:   { label: 'Jeux vidéo',      icon: '🎮', creator: 'Studio',       color: '#16a34a' },
+  jeu_societe: { label: 'Jeux de société', icon: '🎲', creator: 'Auteur',       color: '#ca8a04' },
+  lego:        { label: 'LEGO & briques',  icon: '🧱', creator: 'Marque',       color: '#dc2626' },
+  figurine:    { label: 'Figurines',       icon: '🗿', creator: 'Fabricant',    color: '#4f46e5' },
+  autre:       { label: 'Autre',           icon: '📦', creator: 'Créateur',     color: '#64748b' },
+};
+const STATUS = { possede: 'Possédé', souhait: 'Souhaité', precommande: 'Précommandé' };
+const PROGRESS = { '': '—', a_faire: 'À lire / voir / jouer', en_cours: 'En cours', termine: 'Terminé' };
+const CONDITION = { '': '—', neuf: 'Neuf', tres_bon: 'Très bon', bon: 'Bon', moyen: 'Moyen', abime: 'Abîmé' };
+
+/* ---------- Réglages ---------- */
+const LS = { data: 'collections.data.v1', settings: 'collections.settings.v1', sync: 'collections.sync.v1', ui: 'collections.ui.v1', shared: 'hub.github' };
+const DEFAULT_SETTINGS = { owner: '', repo: '', branch: '', path: 'JSON_COLLECTIONS.json', mediaDir: 'collections-media', token: '', aiKey: '', aiModel: 'gemini-flash-latest', hubUrl: './index.html' };
+function loadSettings() {
+  const s = { ...DEFAULT_SETTINGS, ...read(LS.settings, {}) };
+  const shared = { ...(read('violette_github', {}) || {}), ...Object.fromEntries(Object.entries(read(LS.shared, {}) || {}).filter(([, v]) => v)) };
+  if (shared) for (const k of ['owner', 'repo', 'branch', 'token']) if (!s[k] && shared[k]) s[k] = shared[k];
+  if (!s.branch) s.branch = 'main';
+  if (String(s.aiKey || '').startsWith('sk-ant')) s.aiKey = '';
+  if (!String(s.aiModel || '').startsWith('gemini')) s.aiModel = AI_DEFAULT;
+  const ai = read('hub.ai', null); if (ai?.key && !s.aiKey) s.aiKey = ai.key; // clé IA partagée entre les apps
+  return s;
+}
+let S = loadSettings();
+let ui = { view: 'grid', sort: 'recent', filter: 'all', q: '', lastCollection: '', lastStatus: 'possede', ...read(LS.ui, {}) };
+const saveUI = () => write(LS.ui, ui);
+
+/* ---------- Données ---------- */
+const emptyData = () => ({ app: 'collections', schema: 1, updatedAt: 0, collections: [], items: [], tombstones: {} });
+let data = read(LS.data, null) || emptyData();
+let syncMeta = { sha: null, dirty: false, lastSync: 0, pendingMedia: [], ...read(LS.sync, {}) };
+const saveSync = () => write(LS.sync, syncMeta);
+
+function touch() { data.updatedAt = now(); write(LS.data, data); syncMeta.dirty = true; saveSync(); scheduleSync(); }
+function upsertItems(list) { const t = now(); for (const it of list) { it.updatedAt = t; const i = data.items.findIndex(x => x.id === it.id); if (i >= 0) data.items[i] = it; else data.items.push(it); } touch(); }
+const upsertItem = it => upsertItems([it]);
+function deleteItem(id) { const it = getItem(id); data.items = data.items.filter(x => x.id !== id); data.tombstones[id] = now(); if (it?.cover?.type === 'repo') removeMedia(it.cover.path); touch(); }
+function upsertCollection(c) { c.updatedAt = now(); const i = data.collections.findIndex(x => x.id === c.id); if (i >= 0) data.collections[i] = c; else data.collections.push(c); touch(); return c; }
+function deleteCollection(id) {
+  const t = now();
+  for (const it of data.items.filter(x => x.collectionId === id)) { data.tombstones[it.id] = t; if (it.cover?.type === 'repo') removeMedia(it.cover.path); }
+  data.items = data.items.filter(x => x.collectionId !== id);
+  data.collections = data.collections.filter(x => x.id !== id); data.tombstones[id] = t; touch();
+}
+const getItem = id => data.items.find(x => x.id === id);
+const getColl = id => data.collections.find(x => x.id === id);
+const collType = c => TYPES[c?.type] || TYPES.autre;
+function newCollection(type, name) {
+  const t = TYPES[type] || TYPES.autre;
+  return upsertCollection({ id: uid(), name: name || t.label, type: TYPES[type] ? type : 'autre', icon: t.icon, color: t.color, createdAt: now() });
+}
+function blankItem(collectionId) {
+  return { id: uid(), collectionId, title: '', subtitle: '', creators: '', series: '', volume: '', publisher: '', year: '', isbn: '', format: '', genre: '', language: '', tags: [], description: '',
+    status: ui.lastStatus || 'possede', progress: '', condition: '', rating: 0, pricePaid: '', value: '', acquiredAt: '', location: '', notes: '', copies: 1, cover: null, loan: null, source: 'manuel', createdAt: now(), updatedAt: now() };
+}
+
+function mergeData(a, b) {
+  const out = emptyData();
+  out.tombstones = { ...(a.tombstones || {}) };
+  for (const [k, v] of Object.entries(b.tombstones || {})) out.tombstones[k] = Math.max(out.tombstones[k] || 0, v);
+  const mergeList = (la, lb) => {
+    const m = new Map();
+    for (const x of [...(la || []), ...(lb || [])]) { const cur = m.get(x.id); if (!cur || (x.updatedAt || 0) > (cur.updatedAt || 0)) m.set(x.id, x); }
+    return [...m.values()].filter(x => !((out.tombstones[x.id] || 0) >= (x.updatedAt || 0))).sort((p, q) => (p.createdAt || 0) - (q.createdAt || 0) || String(p.id).localeCompare(q.id));
+  };
+  out.collections = mergeList(a.collections, b.collections);
+  out.items = mergeList(a.items, b.items);
+  out.updatedAt = Math.max(a.updatedAt || 0, b.updatedAt || 0);
+  return out;
+}
+const canon = d => JSON.stringify({ c: [...(d.collections || [])].sort((a, b) => a.id < b.id ? -1 : 1), i: [...(d.items || [])].sort((a, b) => a.id < b.id ? -1 : 1), t: Object.keys(d.tombstones || {}).sort().map(k => [k, d.tombstones[k]]) });
+
+/* ---------- Encodage ---------- */
+function utf8ToB64(str) { const bytes = new TextEncoder().encode(str); let bin = ''; for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return btoa(bin); }
+function b64ToUtf8(b64) { const bin = atob(b64.replace(/\s/g, '')); const bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i); return new TextDecoder().decode(bytes); }
+const blobToB64 = b => new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(',')[1]); fr.onerror = rej; fr.readAsDataURL(b); });
+
+/* ---------- IndexedDB (cache des images) ---------- */
+const idb = (() => {
+  let dbp;
+  const open = () => dbp ||= new Promise((res, rej) => { const r = indexedDB.open('collections-media', 1); r.onupgradeneeded = () => r.result.createObjectStore('blobs'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+  const tx = async (mode, fn) => { const db = await open(); return new Promise((res, rej) => { const t = db.transaction('blobs', mode); const st = t.objectStore('blobs'); const rq = fn(st); t.oncomplete = () => res(rq?.result); t.onerror = () => rej(t.error); }); };
+  return { get: k => tx('readonly', s => s.get(k)).catch(() => null), set: (k, v) => tx('readwrite', s => s.put(v, k)), del: k => tx('readwrite', s => s.delete(k)).catch(() => {}) };
+})();
+
+/* ---------- GitHub ---------- */
+async function errMsg(r) { try { const j = await r.json(); return `${r.status} ${j.message || ''}`; } catch { return `HTTP ${r.status}`; } }
+const gh = {
+  ok: () => !!(S.owner && S.repo && S.token),
+  url: p => `https://api.github.com/repos/${encodeURIComponent(S.owner)}/${encodeURIComponent(S.repo)}/contents/${p.split('/').map(encodeURIComponent).join('/')}`,
+  h: (accept = 'application/vnd.github+json') => ({ Authorization: `Bearer ${S.token}`, Accept: accept, 'X-GitHub-Api-Version': '2022-11-28' }),
+  async getText(p) {
+    const q = `?ref=${encodeURIComponent(S.branch)}`;
+    const r = await fetch(gh.url(p) + q, { headers: gh.h(), cache: 'no-store' });
+    if (r.status === 404) return null;
+    if (!r.ok) throw new Error(await errMsg(r));
+    const j = await r.json();
+    let text;
+    if (j.content && j.encoding === 'base64') text = b64ToUtf8(j.content);
+    else { const r2 = await fetch(gh.url(p) + q, { headers: gh.h('application/vnd.github.raw+json'), cache: 'no-store' }); if (!r2.ok) throw new Error(await errMsg(r2)); text = await r2.text(); }
+    return { sha: j.sha, text };
+  },
+  async sha(p) { const r = await fetch(gh.url(p) + `?ref=${encodeURIComponent(S.branch)}`, { headers: gh.h(), cache: 'no-store' }); if (!r.ok) return null; return (await r.json()).sha; },
+  async put(p, b64, sha, message) {
+    const body = { message, content: b64, branch: S.branch }; if (sha) body.sha = sha;
+    const r = await fetch(gh.url(p), { method: 'PUT', headers: { ...gh.h(), 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!r.ok) { const e = new Error(await errMsg(r)); e.status = r.status; throw e; }
+    return (await r.json()).content.sha;
+  },
+  async getBlob(p) { const r = await fetch(gh.url(p) + `?ref=${encodeURIComponent(S.branch)}`, { headers: gh.h('application/vnd.github.raw+json'), cache: 'no-store' }); return r.ok ? r.blob() : null; },
+  async del(p, message) { const sha = await gh.sha(p); if (!sha) return; await fetch(gh.url(p), { method: 'DELETE', headers: { ...gh.h(), 'Content-Type': 'application/json' }, body: JSON.stringify({ message, sha, branch: S.branch }) }); },
+};
+
+/* ---------- Synchronisation ---------- */
+let syncing = false, syncAgain = false, syncTimer = null;
+function setSync(state, msg = '') {
+  const b = $('#syncBtn'); b.className = 'sync ' + state;
+  $('#syncTxt').textContent = { local: 'Local', pending: 'En attente', busy: 'Synchro…', ok: 'À jour', err: 'Erreur' }[state] || state;
+  b.title = msg || (syncMeta.lastSync ? 'Dernière synchro : ' + new Date(syncMeta.lastSync).toLocaleString('fr-FR') : 'Synchroniser');
+}
+function scheduleSync(delay = 1500) { clearTimeout(syncTimer); if (!gh.ok()) { setSync('local', 'Configure GitHub dans les réglages'); return; } setSync('pending'); syncTimer = setTimeout(sync, delay); }
+async function uploadPendingMedia() {
+  for (const p of [...syncMeta.pendingMedia]) {
+    const blob = await idb.get(p);
+    if (blob) {
+      const b64 = await blobToB64(blob);
+      try { await gh.put(p, b64, null, `Collections : image ${p.split('/').pop()}`); }
+      catch (e) { if (e.status === 422 || e.status === 409) await gh.put(p, b64, await gh.sha(p), `Collections : image ${p.split('/').pop()}`); else throw e; }
+    }
+    syncMeta.pendingMedia = syncMeta.pendingMedia.filter(x => x !== p); saveSync();
+  }
+}
+async function removeMedia(p) {
+  syncMeta.pendingMedia = syncMeta.pendingMedia.filter(x => x !== p); saveSync();
+  idb.del(p);
+  if (gh.ok()) gh.del(p, `Collections : suppression image`).catch(() => {});
+}
+async function sync() {
+  if (!gh.ok()) { setSync('local', 'Configure GitHub dans les réglages'); return; }
+  if (syncing) { syncAgain = true; return; }
+  syncing = true; setSync('busy');
+  try {
+    await uploadPendingMedia();
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const remote = await gh.getText(S.path);
+      const remoteData = remote && remote.text.trim() ? JSON.parse(remote.text) : null;
+      const merged = remoteData ? mergeData(data, remoteData) : data;
+      const localChanged = canon(merged) !== canon(data);
+      const needPush = !remoteData || canon(merged) !== canon(remoteData);
+      data = merged; write(LS.data, data);
+      if (localChanged) render();
+      if (!needPush) { syncMeta.sha = remote.sha; break; }
+      try {
+        syncMeta.sha = await gh.put(S.path, utf8ToB64(JSON.stringify(data, null, 1)), remote?.sha, `Collections : ${data.items.length} objets (${new Date().toLocaleString('fr-FR')})`);
+        break;
+      } catch (e) { if ((e.status === 409 || e.status === 422) && attempt < 3) continue; throw e; }
+    }
+    syncMeta.dirty = false; syncMeta.lastSync = now(); saveSync(); setSync('ok');
+  } catch (e) { console.error(e); setSync('err', e.message); toast('Synchro GitHub : ' + e.message); }
+  finally { syncing = false; if (syncAgain) { syncAgain = false; scheduleSync(300); } }
+}
+
+/* ---------- Images ---------- */
+const urlCache = new Map();
+async function coverURL(cover) {
+  if (!cover) return null;
+  if (cover.type === 'url') return cover.src;
+  if (cover.type !== 'repo') return null;
+  if (urlCache.has(cover.path)) return urlCache.get(cover.path);
+  let blob = await idb.get(cover.path);
+  if (!blob && gh.ok()) { try { blob = await gh.getBlob(cover.path); if (blob) idb.set(cover.path, blob); } catch {} }
+  if (!blob) return null;
+  const u = URL.createObjectURL(blob); urlCache.set(cover.path, u); return u;
+}
+async function storeCoverBlob(itemId, blob) {
+  const p = `${S.mediaDir.replace(/\/+$/, '')}/${itemId}-${Date.now().toString(36)}.jpg`;
+  await idb.set(p, blob); urlCache.set(p, URL.createObjectURL(blob));
+  syncMeta.pendingMedia.push(p); saveSync();
+  return { type: 'repo', path: p };
+}
+async function fileToImage(file) { const u = URL.createObjectURL(file); const img = new Image(); img.src = u; await img.decode(); setTimeout(() => URL.revokeObjectURL(u), 2000); return img; }
+function drawScaled(img, max, crop) {
+  const W = img.naturalWidth, H = img.naturalHeight;
+  let sx = 0, sy = 0, sw = W, sh = H;
+  if (crop && crop.length === 4) {
+    const pad = 0.02; const [x0, y0, x1, y1] = crop.map(Number);
+    sx = Math.max(0, (Math.min(x0, x1) - pad) * W); sy = Math.max(0, (Math.min(y0, y1) - pad) * H);
+    sw = Math.min(W - sx, (Math.abs(x1 - x0) + 2 * pad) * W); sh = Math.min(H - sy, (Math.abs(y1 - y0) + 2 * pad) * H);
+    if (sw < 20 || sh < 20) { sx = 0; sy = 0; sw = W; sh = H; }
+  }
+  const sc = Math.min(1, max / Math.max(sw, sh));
+  const c = document.createElement('canvas'); c.width = Math.round(sw * sc); c.height = Math.round(sh * sc);
+  c.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, c.width, c.height);
+  return c;
+}
+const canvasToBlob = (c, q = 0.8) => new Promise(r => c.toBlob(r, 'image/jpeg', q));
+function pickImages({ camera = false, multiple = false } = {}) {
+  return new Promise(res => {
+    const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*';
+    if (camera) inp.capture = 'environment'; if (multiple) inp.multiple = true;
+    inp.onchange = () => res([...inp.files]); inp.addEventListener('cancel', () => res([]));
+    inp.click();
+  });
+}
+
+/* ---------- Recherche ISBN (Google Books + Open Library) ---------- */
+const cleanCode = c => String(c || '').replace(/[^0-9Xx]/g, '').toUpperCase();
+function isbn10to13(i) { if (i.length !== 10) return i; const b = '978' + i.slice(0, 9); let s = 0; for (let k = 0; k < 12; k++) s += +b[k] * (k % 2 ? 3 : 1); return b + ((10 - s % 10) % 10); }
+const isBookCode = c => /^97[89]\d{10}$/.test(c) || /^\d{9}[\dX]$/.test(c);
+async function lookupISBN(raw) {
+  let code = cleanCode(raw); if (code.length === 10) code = isbn10to13(code);
+  let res = null;
+  try {
+    const r = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${code}`);
+    const v = (await r.json()).items?.[0]?.volumeInfo;
+    if (v) res = { title: v.title || '', subtitle: v.subtitle || '', creators: (v.authors || []).join(', '), publisher: v.publisher || '', year: (v.publishedDate || '').slice(0, 4), description: (v.description || '').slice(0, 600), genre: (v.categories || [])[0] || '', language: v.language || '', cover: v.imageLinks ? (v.imageLinks.thumbnail || v.imageLinks.smallThumbnail || '').replace('http:', 'https:').replace('&edge=curl', '') : '' };
+  } catch {}
+  if (!res || !res.cover) {
+    try {
+      const r = await fetch(`https://openlibrary.org/api/books?bibkeys=ISBN:${code}&format=json&jscmd=data`);
+      const b = (await r.json())[`ISBN:${code}`];
+      if (b) {
+        const ol = { title: b.title || '', subtitle: b.subtitle || '', creators: (b.authors || []).map(a => a.name).join(', '), publisher: (b.publishers || [])[0]?.name || '', year: (b.publish_date || '').match(/\d{4}/)?.[0] || '', cover: b.cover?.large || b.cover?.medium || '' };
+        res = res ? { ...ol, ...Object.fromEntries(Object.entries(res).filter(([, v]) => v)) } : ol;
+      }
+    } catch {}
+  }
+  if (res) { res.isbn = code; res.type = 'livre'; }
+  return res;
+}
+
+/* ---------- IA (Gemini, appel direct depuis le navigateur) ---------- */
+function parseJsonLoose(t) { t = String(t).replace(/```json|```/g, ''); const a = t.indexOf('{'), b = t.lastIndexOf('}'); if (a < 0 || b < a) throw new Error("Réponse IA illisible"); return JSON.parse(t.slice(a, b + 1)); }
+async function askClaude(imagesB64, prompt, maxTokens = 4000) {
+  return parseJsonLoose(await kitAI([...imagesB64.map(d => ({ mime: 'image/jpeg', b64: d })), prompt], { key: S.aiKey, model: S.aiModel, maxTokens }));
+}
+function aiPrompt(multi) {
+  const colls = data.collections.map(c => `${c.name} (${c.type})`).join(', ') || 'aucune pour le moment';
+  const series = [...new Set(data.items.map(i => i.series).filter(Boolean))].slice(0, 120).join(' | ') || 'aucune';
+  return `Tu es l'assistant de catalogage d'une application de suivi de collections (livres, BD, mangas, vinyles/CD, films, jeux vidéo, jeux de société, LEGO, figurines…).
+${multi ? "La photo peut contenir PLUSIEURS objets (étagère, pile, tranches…) : liste chaque objet identifiable séparément, de gauche à droite puis de haut en bas." : "Identifie l'objet principal de la photo (un seul objet)."}
+Lis attentivement tout le texte visible (couverture, tranche, dos, code-barres, numéro de tome). Utilise tes connaissances pour compléter auteur, éditeur, série et année quand tu reconnais l'œuvre avec certitude. N'invente rien : laisse "" ce que tu ne peux ni lire ni déduire de façon fiable.
+Collections de l'utilisateur : ${colls}.
+Séries déjà présentes (réutilise exactement la même orthographe si c'est la même série) : ${series}.
+Réponds UNIQUEMENT avec un JSON valide, sans aucun texte autour, au format :
+{"items":[{"type":"livre|bd|manga|musique|film|jeu_video|jeu_societe|lego|figurine|autre","collection":"nom exact d'une collection existante adaptée, sinon \\"\\"","title":"titre exact de l'objet","creators":"auteur(s)/artiste(s)/studio, séparés par des virgules","series":"série, saga ou cycle si applicable","volume":"numéro de tome/volume (chiffres) si applicable","publisher":"éditeur / label / studio / marque","year":"année","isbn":"ISBN-13 ou EAN si lisible (chiffres uniquement)","format":"ex. Broché, Relié, Poche, Intégrale, Vinyle 33T, CD, Blu-ray, DVD, PS5, Switch, Boîte…","genre":"genre principal","language":"langue de l'édition","tags":["mots-clés utiles"],"description":"résumé en 1 ou 2 phrases si tu connais l'œuvre, sinon \\"\\"","confidence":0.0,"bbox":[x0,y0,x1,y1]}]}
+"confidence" est entre 0 et 1. "bbox" = rectangle approximatif de l'objet dans l'image en fractions (0 à 1) de la largeur et de la hauteur, origine en haut à gauche.`;
+}
+const BARCODE_PROMPT = `Lis le ou les codes-barres (EAN-13, ISBN, UPC) visibles sur la photo, chiffre par chiffre (utilise aussi les chiffres imprimés sous les barres). Réponds UNIQUEMENT en JSON : {"codes":["9782..."]}. Si aucun code lisible : {"codes":[]}.`;
+
+/* ---------- UI : utilitaires ---------- */
+let toastT;
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2600); }
+let sheetOnClose = null;
+function openSheet(title, html, { onClose } = {}) {
+  const w = $('#sheetWrap'); const wasOpen = !w.hidden;
+  if (wasOpen && sheetOnClose) { const f = sheetOnClose; sheetOnClose = null; f(); }
+  $('#sheetTitle').textContent = title; $('#sheetBody').innerHTML = html; $('#sheetBody').scrollTop = 0;
+  sheetOnClose = onClose || null;
+  if (!wasOpen) { w.hidden = false; history.pushState({ sheet: true }, ''); }
+  hydrateCovers($('#sheetBody'));
+  return $('#sheetBody');
+}
+function doCloseSheet() { const w = $('#sheetWrap'); if (w.hidden) return; w.hidden = true; $('#sheetBody').innerHTML = ''; if (sheetOnClose) { const f = sheetOnClose; sheetOnClose = null; f(); } }
+let afterClose = null;
+function closeSheet(then) {
+  if ($('#sheetWrap').hidden) { then?.(); return; }
+  if (history.state?.sheet) { afterClose = then || null; history.back(); }
+  else { doCloseSheet(); then?.(); }
+}
+window.addEventListener('popstate', () => { if (!$('#sheetWrap').hidden) doCloseSheet(); const f = afterClose; afterClose = null; f?.(); });
+$('#sheetClose').onclick = () => closeSheet();
+$('#sheetWrap').addEventListener('click', e => { if (e.target.id === 'sheetWrap') closeSheet(); });
+
+function placeholder(it) {
+  const c = getColl(it.collectionId); const t = collType(c);
+  return `<div class="ph" style="background:linear-gradient(160deg,${c?.color || t.color},#312e81)"><i>${t.icon}</i><span>${esc((it.title || '').slice(0, 40))}</span></div>`;
+}
+function coverHTML(it, { badges = true } = {}) {
+  let b = '';
+  if (badges) {
+    if (it.loan) b += `<span class="badge loan">Prêté</span>`;
+    else if (it.status === 'souhait') b += `<span class="badge wish">Souhait</span>`;
+    else if (it.status === 'precommande') b += `<span class="badge pre">Précommande</span>`;
+    if (it.volume) b += `<span class="vol">#${esc(it.volume)}</span>`;
+  }
+  return `<div class="cover" data-cover="${esc(it.id)}">${placeholder(it)}${b}</div>`;
+}
+const io = 'IntersectionObserver' in window ? new IntersectionObserver(ents => { for (const e of ents) if (e.isIntersecting) { io.unobserve(e.target); loadCover(e.target); } }, { rootMargin: '200px' }) : null;
+async function loadCover(el) {
+  const it = getItem(el.dataset.cover) || el._item; if (!it?.cover) return;
+  const u = await coverURL(it.cover); if (!u) return;
+  const img = new Image(); img.alt = ''; img.loading = 'lazy'; img.referrerPolicy = 'no-referrer';
+  img.onload = () => { const ph = el.querySelector('.ph'); if (ph) ph.replaceWith(img); };
+  img.src = u;
+}
+function hydrateCovers(root = document) { for (const el of $$('.cover[data-cover]', root)) io ? io.observe(el) : loadCover(el); }
+const creatorsOf = it => it.creators || '';
+function itemCard(it) { return `<div class="it" data-open="${esc(it.id)}">${coverHTML(it)}<div class="t">${esc(it.title || 'Sans titre')}</div><div class="c">${esc(creatorsOf(it) || it.series || '')}</div></div>`; }
+function itemRow(it) {
+  const c = getColl(it.collectionId);
+  const sub = [creatorsOf(it), it.series ? `${it.series}${it.volume ? ' #' + it.volume : ''}` : '', it.year].filter(Boolean).join(' · ');
+  const st = it.loan ? `🤝 ${esc(it.loan.to)}` : it.status !== 'possede' ? STATUS[it.status] : (it.rating ? '★'.repeat(it.rating) : '');
+  return `<div class="li" data-open="${esc(it.id)}">${coverHTML(it, { badges: false })}<div class="meta"><b>${esc(it.title || 'Sans titre')}</b><small>${esc(sub)}</small><small>${collType(c).icon} ${esc(c?.name || '')} ${st ? '· ' + st : ''}</small></div></div>`;
+}
+function bindOpen(root) { root.addEventListener('click', e => { const el = e.target.closest('[data-open]'); if (el) openDetail(el.dataset.open); }); }
+
+/* ---------- Filtres / tri ---------- */
+function filterItems(list) {
+  const q = norm(ui.q);
+  let out = list;
+  if (q) out = out.filter(it => norm([it.title, it.subtitle, it.creators, it.series, it.publisher, it.isbn, it.genre, (it.tags || []).join(' '), it.location, it.notes, it.loan?.to].join(' ')).includes(q));
+  if (ui.filter === 'possede') out = out.filter(it => it.status === 'possede');
+  if (ui.filter === 'souhait') out = out.filter(it => it.status === 'souhait' || it.status === 'precommande');
+  if (ui.filter === 'pret') out = out.filter(it => it.loan);
+  if (ui.filter === 'encours') out = out.filter(it => it.progress === 'en_cours' || it.progress === 'a_faire');
+  const cmp = {
+    recent: (a, b) => (b.createdAt || 0) - (a.createdAt || 0),
+    title: (a, b) => norm(a.title).localeCompare(norm(b.title), 'fr', { numeric: true }),
+    creator: (a, b) => norm(a.creators).localeCompare(norm(b.creators), 'fr') || norm(a.title).localeCompare(norm(b.title), 'fr', { numeric: true }),
+    series: (a, b) => norm(a.series || a.title).localeCompare(norm(b.series || b.title), 'fr') || (parseFloat(a.volume) || 0) - (parseFloat(b.volume) || 0),
+    year: (a, b) => (parseInt(b.year) || 0) - (parseInt(a.year) || 0),
+    rating: (a, b) => (b.rating || 0) - (a.rating || 0),
+  }[ui.sort] || (() => 0);
+  return [...out].sort(cmp);
+}
+
+/* ---------- Vues ---------- */
+const view = $('#view');
+function route() { return location.hash.replace(/^#\/?/, '').split('/'); }
+function render() {
+  const [r, arg] = route();
+  $$('.bottom [data-nav]').forEach(b => b.classList.toggle('on', b.dataset.nav === '#/' + (r || '') || (r === 'c' && b.dataset.nav === '#/all')));
+  if (r === 'c' && getColl(arg)) renderList(arg);
+  else if (r === 'all') renderList(null);
+  else if (r === 'suivi') renderSuivi();
+  else if (r === 'stats') renderStats();
+  else renderHome();
+  drawHero();
+}
+
+function drawHero() {
+  const items = data.items;
+  kitHero($('#hero'), { app: 'collections', title: $('#title').textContent || 'Collections', sub: '‹ Accueil', subHref: './index.html',
+    rings: [
+      { label: 'Possédés', value: items.filter(i => i.status === 'possede').length, href: '#/all' },
+      { label: 'Envies', value: items.filter(i => i.status !== 'possede').length, href: '#/suivi', color: '#ff7a1f' },
+      { label: 'Prêtés', value: items.filter(i => i.loan).length, href: '#/suivi', color: '#2f86ff' },
+      { label: 'Collections', value: data.collections.length, href: '#/' },
+    ],
+    after: el => { const a = $('#topActions'); a.style.display = 'flex'; a.style.gap = '6px'; el.querySelector('.k-actions').appendChild(a); } });
+}
+window.addEventListener('hashchange', () => { window.scrollTo(0, 0); render(); });
+
+function renderHome() {
+  $('#title').textContent = 'Collections';
+  const items = data.items;
+  const owned = items.filter(i => i.status === 'possede').length;
+  const wish = items.filter(i => i.status !== 'possede').length;
+  const lent = items.filter(i => i.loan).length;
+  const recent = [...items].sort((a, b) => b.createdAt - a.createdAt).slice(0, 12);
+  const tiles = data.collections.map(c => {
+    const n = items.filter(i => i.collectionId === c.id).length;
+    return `<button class="tile" data-coll="${esc(c.id)}" style="background:linear-gradient(150deg,${c.color || collType(c).color},color-mix(in srgb,${c.color || collType(c).color} 55%,#26233a))"><span class="ic">${c.icon || collType(c).icon}</span><span><b>${esc(c.name)}</b><small>${n} objet${n > 1 ? 's' : ''}</small></span></button>`;
+  }).join('');
+  view.innerHTML = `
+    <label class="search">🔎<input id="homeQ" placeholder="Rechercher dans toutes les collections…" enterkeyhint="search"></label>
+    <h2 class="sec">Mes collections</h2>
+    ${data.collections.length ? '' : `<div class="card" style="margin-bottom:12px"><b>Bienvenue 👋</b><p class="hint" style="margin:6px 0 10px">Crée ta première collection en un tap, ou ajoute directement un objet en photo : l'IA crée la collection adaptée.</p><div class="btns">${['livre', 'bd', 'manga', 'musique', 'film', 'jeu_video'].map(t => `<button class="btn ghost sm" data-preset="${t}">${TYPES[t].icon} ${TYPES[t].label}</button>`).join('')}</div></div>`}
+    <div class="tiles">${tiles}<button class="tile add" id="addColl"><span class="ic">＋</span><b>Nouvelle collection</b></button></div>
+    ${recent.length ? `<h2 class="sec">Ajouts récents</h2><div class="row-scroll" id="recent">${recent.map(itemCard).join('')}</div>` : ''}`;
+  $('#homeQ').addEventListener('keydown', e => { if (e.key === 'Enter') { ui.q = e.target.value; ui.filter = 'all'; saveUI(); location.hash = '#/all'; } });
+  view.querySelectorAll('[data-coll]').forEach(b => b.onclick = () => location.hash = '#/c/' + b.dataset.coll);
+  view.querySelectorAll('[data-preset]').forEach(b => b.onclick = () => { newCollection(b.dataset.preset); render(); });
+  $('#addColl').onclick = () => openCollectionForm();
+  if ($('#recent')) bindOpen($('#recent'));
+  hydrateCovers(view);
+}
+
+function renderList(collId) {
+  const c = collId ? getColl(collId) : null;
+  $('#title').textContent = c ? `${c.icon || collType(c).icon} ${c.name}` : 'Tous les objets';
+  const base = c ? data.items.filter(i => i.collectionId === c.id) : data.items;
+  const list = filterItems(base);
+  const F = { all: 'Tous', possede: 'Possédés', souhait: 'Souhaits', pret: 'Prêtés', encours: 'À faire / en cours' };
+  view.innerHTML = `
+    <label class="search">🔎<input id="q" value="${esc(ui.q)}" placeholder="Titre, auteur, série, ISBN, tag…" enterkeyhint="search"><button class="chip" id="clearQ" ${ui.q ? '' : 'hidden'}>✕</button></label>
+    <div class="chips">${Object.entries(F).map(([k, v]) => `<button class="chip ${ui.filter === k ? 'on' : ''}" data-f="${k}">${v}</button>`).join('')}</div>
+    <div class="toolbar">
+      <select id="sort">${Object.entries({ recent: 'Ajout récent', title: 'Titre', creator: 'Auteur / artiste', series: 'Série & tome', year: 'Année', rating: 'Note' }).map(([k, v]) => `<option value="${k}" ${ui.sort === k ? 'selected' : ''}>Tri : ${v}</option>`).join('')}</select>
+      <div class="seg"><button data-v="grid" class="${ui.view === 'grid' ? 'on' : ''}">▦</button><button data-v="list" class="${ui.view === 'list' ? 'on' : ''}">☰</button></div>
+      ${c ? `<button class="btn ghost sm" id="editColl">⋯</button>` : ''}
+    </div>
+    <div class="count">${list.length} objet${list.length > 1 ? 's' : ''}${list.length !== base.length ? ` sur ${base.length}` : ''}</div>
+    <div id="items" class="${ui.view === 'grid' ? 'grid' : 'list'}">${list.map(ui.view === 'grid' ? itemCard : itemRow).join('')}</div>
+    ${!base.length ? `<div class="empty"><div class="big">${c ? c.icon || collType(c).icon : '📚'}</div><p>Rien ici pour l'instant.</p><button class="btn" id="emptyAdd">＋ Ajouter un objet</button></div>` : ''}`;
+  let qt; $('#q').addEventListener('input', e => { clearTimeout(qt); qt = setTimeout(() => { ui.q = e.target.value; saveUI(); const pos = e.target.selectionStart; renderList(collId); const q = $('#q'); q.focus(); q.setSelectionRange(pos, pos); }, 250); });
+  $('#clearQ').onclick = e => { e.preventDefault(); ui.q = ''; saveUI(); renderList(collId); };
+  view.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { ui.filter = b.dataset.f; saveUI(); renderList(collId); });
+  view.querySelectorAll('[data-v]').forEach(b => b.onclick = () => { ui.view = b.dataset.v; saveUI(); renderList(collId); });
+  $('#sort').onchange = e => { ui.sort = e.target.value; saveUI(); renderList(collId); };
+  if ($('#editColl')) $('#editColl').onclick = () => openCollectionForm(c);
+  if ($('#emptyAdd')) $('#emptyAdd').onclick = () => openAddMenu(collId);
+  bindOpen($('#items'));
+  hydrateCovers(view);
+}
+
+function renderSuivi() {
+  $('#title').textContent = 'Suivi';
+  const loans = data.items.filter(i => i.loan).sort((a, b) => (a.loan.due || '9') < (b.loan.due || '9') ? -1 : 1);
+  const wish = data.items.filter(i => i.status !== 'possede').sort((a, b) => b.createdAt - a.createdAt);
+  const inprog = data.items.filter(i => i.progress === 'en_cours');
+  const gaps = seriesGaps();
+  const t = todayISO();
+  view.innerHTML = `<div id="suiviWrap">
+    <h2 class="sec">🤝 Prêts en cours <span>${loans.length}</span></h2>
+    ${loans.length ? loans.map(it => `<div class="li card" style="display:flex;gap:12px;align-items:center;margin-bottom:8px">${coverHTML(it, { badges: false }).replace('class="cover"', 'class="cover" style="width:48px;flex:none"')}<div class="meta" style="flex:1;min-width:0" data-open="${esc(it.id)}"><b>${esc(it.title)}</b><small>à <b>${esc(it.loan.to)}</b> depuis le ${esc(it.loan.date ? new Date(it.loan.date).toLocaleDateString('fr-FR') : '?')}</small>${it.loan.due ? `<small class="${it.loan.due < t ? 'overdue' : ''}">retour prévu : ${new Date(it.loan.due).toLocaleDateString('fr-FR')}${it.loan.due < t ? ' — en retard' : ''}</small>` : ''}</div><button class="btn sm" data-ret="${esc(it.id)}">Rendu</button></div>`).join('') : '<p class="hint">Aucun prêt en cours.</p>'}
+    <h2 class="sec">📖 En cours <span>${inprog.length}</span></h2>
+    ${inprog.length ? `<div class="row-scroll" id="inprog">${inprog.map(itemCard).join('')}</div>` : '<p class="hint">Rien en cours.</p>'}
+    <h2 class="sec">🧩 Séries incomplètes <span>${gaps.length}</span></h2>
+    ${gaps.length ? `<div class="card">${gaps.map((g, i) => `<div class="gap"><div><b>${esc(g.series)}</b><br><small class="hint">${g.vols.size}/${g.max} · manquants : ${g.missing.slice(0, 15).join(', ')}${g.missing.length > 15 ? '…' : ''}</small></div><button class="btn ghost sm" data-gap="${i}">＋ Souhaits</button></div>`).join('')}</div>` : '<p class="hint">Aucun trou détecté dans tes séries numérotées.</p>'}
+    <h2 class="sec">💜 Liste de souhaits <span>${wish.length}</span></h2>
+    ${wish.length ? `<div class="list" id="wish">${wish.map(itemRow).join('')}</div>` : '<p class="hint">Ta liste de souhaits est vide.</p>'}</div>`;
+  view.querySelectorAll('[data-ret]').forEach(b => b.onclick = e => { e.stopPropagation(); const it = getItem(b.dataset.ret); addHistory(it, `Rendu par ${it.loan.to}`); it.loan = null; upsertItem(it); toast('Marqué comme rendu'); render(); });
+  view.querySelectorAll('[data-gap]').forEach(b => b.onclick = () => { const g = gaps[+b.dataset.gap]; addMissingAsWish(g); render(); });
+  bindOpen($('#suiviWrap'));
+  hydrateCovers(view);
+}
+function seriesGaps() {
+  const g = new Map();
+  for (const it of data.items) {
+    const v = parseInt(it.volume); if (!it.series || !v || v > 500) continue;
+    const k = it.collectionId + '|' + norm(it.series);
+    if (!g.has(k)) g.set(k, { series: it.series, collectionId: it.collectionId, vols: new Set(), sample: it });
+    g.get(k).vols.add(v);
+  }
+  return [...g.values()].map(s => { const max = Math.max(...s.vols); const missing = []; for (let i = 1; i < max; i++) if (!s.vols.has(i)) missing.push(i); return { ...s, max, missing }; }).filter(s => s.missing.length);
+}
+function addMissingAsWish(g) {
+  const s = g.sample; const list = g.missing.map(v => ({ ...blankItem(g.collectionId), title: `${g.series} — Tome ${v}`, series: g.series, volume: String(v), creators: s.creators, publisher: s.publisher, format: s.format, status: 'souhait', source: 'serie' }));
+  upsertItems(list); toast(`${list.length} tome(s) ajouté(s) aux souhaits`);
+}
+
+function renderStats() {
+  $('#title').textContent = 'Statistiques';
+  const items = data.items, owned = items.filter(i => i.status === 'possede');
+  const paid = owned.reduce((s, i) => s + (parseFloat(i.pricePaid) || 0), 0);
+  const value = owned.reduce((s, i) => s + (parseFloat(i.value || i.pricePaid) || 0), 0);
+  const byColl = data.collections.map(c => ({ name: `${c.icon || collType(c).icon} ${c.name}`, n: items.filter(i => i.collectionId === c.id && i.status === 'possede').length })).sort((a, b) => b.n - a.n);
+  const maxC = Math.max(1, ...byColl.map(x => x.n));
+  const cr = {}; for (const i of owned) for (const a of (i.creators || '').split(',').map(x => x.trim()).filter(Boolean)) cr[a] = (cr[a] || 0) + 1;
+  const topCr = Object.entries(cr).sort((a, b) => b[1] - a[1]).slice(0, 8); const maxCr = Math.max(1, ...topCr.map(x => x[1]));
+  const months = []; const d = new Date(); d.setDate(1);
+  for (let k = 11; k >= 0; k--) { const m = new Date(d.getFullYear(), d.getMonth() - k, 1); months.push({ key: `${m.getFullYear()}-${m.getMonth()}`, label: m.toLocaleDateString('fr-FR', { month: 'short' }), n: 0 }); }
+  for (const i of items) { const m = new Date(i.createdAt); const f = months.find(x => x.key === `${m.getFullYear()}-${m.getMonth()}`); if (f) f.n++; }
+  const maxM = Math.max(1, ...months.map(m => m.n));
+  const done = owned.filter(i => i.progress === 'termine').length;
+  view.innerHTML = `
+    <div class="kpis"><div class="kpi"><b>${owned.length}</b><span>objets possédés</span></div><div class="kpi"><b>${data.collections.length}</b><span>collections</span></div><div class="kpi"><b>${done}</b><span>terminés</span></div></div>
+    <div class="kpis" style="grid-template-columns:1fr 1fr"><div class="kpi"><b>${money(paid) || '0 €'}</b><span>dépensés</span></div><div class="kpi"><b>${money(value) || '0 €'}</b><span>valeur estimée</span></div></div>
+    <h2 class="sec">Par collection</h2><div class="card bars">${byColl.map(x => `<div class="bar"><span>${esc(x.name)}</span><span class="b"><i style="width:${x.n / maxC * 100}%"></i></span><em>${x.n}</em></div>`).join('') || '<p class="hint">—</p>'}</div>
+    <h2 class="sec">Ajouts sur 12 mois</h2>
+    <div class="card" style="display:flex;align-items:flex-end;gap:6px;height:140px">${months.map(m => `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end"><small class="hint">${m.n || ''}</small><div style="width:100%;height:${m.n / maxM * 80}%;min-height:2px;background:var(--acc);border-radius:6px"></div><small class="hint">${m.label}</small></div>`).join('')}</div>
+    <h2 class="sec">Auteurs / artistes favoris</h2><div class="card bars">${topCr.map(([n, c]) => `<div class="bar"><span>${esc(n)}</span><span class="b"><i style="width:${c / maxCr * 100}%"></i></span><em>${c}</em></div>`).join('') || '<p class="hint">—</p>'}</div>
+    <h2 class="sec">Données</h2>
+    <div class="card"><div class="btns"><button class="btn ghost sm" id="expJson">⬇︎ Sauvegarde JSON</button><button class="btn ghost sm" id="expCsv">⬇︎ Export CSV</button><button class="btn ghost sm" id="imp">⬆︎ Importer (JSON / CSV Libib)</button></div><p class="hint" style="margin:10px 0 0">Version ${APP_VERSION} · ${items.length} objets · fichier <code>${esc(S.path)}</code></p></div>`;
+  $('#expJson').onclick = () => download(`collections-${todayISO()}.json`, JSON.stringify(data, null, 1), 'application/json');
+  $('#expCsv').onclick = () => download(`collections-${todayISO()}.csv`, toCSV(data.items), 'text/csv');
+  $('#imp').onclick = openImport;
+}
+
+/* ---------- Détail d'un objet ---------- */
+function addHistory(it, txt) { it.history = [...(it.history || []), { at: now(), txt }].slice(-30); }
+function openDetail(id) {
+  const it = getItem(id); if (!it) return;
+  const c = getColl(it.collectionId); const T = collType(c);
+  const t = todayISO();
+  const rows = [
+    [T.creator, it.creators], ['Série', it.series ? `${it.series}${it.volume ? ' — tome ' + it.volume : ''}` : ''], ['Éditeur', it.publisher], ['Année', it.year], ['Format', it.format], ['Genre', it.genre], ['Langue', it.language],
+    ['ISBN / EAN', it.isbn], ['État', it.condition ? CONDITION[it.condition] : ''], ['Avancement', it.progress ? PROGRESS[it.progress] : ''], ['Emplacement', it.location], ['Exemplaires', it.copies > 1 ? it.copies : ''],
+    ['Prix payé', money(it.pricePaid)], ['Valeur', money(it.value)], ['Acquis le', it.acquiredAt ? new Date(it.acquiredAt).toLocaleDateString('fr-FR') : ''], ['Ajouté le', fmtDate(it.createdAt)],
+  ].filter(r => r[1]);
+  const body = openSheet(it.title || 'Objet', `
+    <div class="detail-top">${coverHTML(it)}<div><h3>${esc(it.title)}</h3>${it.subtitle ? `<div class="hint">${esc(it.subtitle)}</div>` : ''}<div style="margin:6px 0">${esc(it.creators)}</div>
+      <span class="tag">${T.icon} ${esc(c?.name || '')}</span><span class="tag">${STATUS[it.status]}</span>
+      <div class="stars" id="stars">${[1, 2, 3, 4, 5].map(n => `<button data-r="${n}" class="${n <= (it.rating || 0) ? 'on' : ''}">★</button>`).join('')}</div></div></div>
+    ${it.loan ? `<div class="loanbox">🤝 Prêté à <b>${esc(it.loan.to)}</b> le ${new Date(it.loan.date).toLocaleDateString('fr-FR')}${it.loan.due ? ` · retour ${new Date(it.loan.due).toLocaleDateString('fr-FR')} ${it.loan.due < t ? '<span class="overdue">(en retard)</span>' : ''}` : ''}<div style="margin-top:8px"><button class="btn sm" id="ret">Marquer comme rendu</button></div></div>` : ''}
+    ${it.description ? `<p>${esc(it.description)}</p>` : ''}
+    <dl class="kv">${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>
+    ${(it.tags || []).length ? `<div>${it.tags.map(x => `<span class="tag"># ${esc(x)}</span>`).join('')}</div>` : ''}
+    ${it.notes ? `<div class="card" style="margin:12px 0;white-space:pre-wrap">${esc(it.notes)}</div>` : ''}
+    <div class="btns" style="margin-top:14px">
+      <button class="btn" id="edit">✏️ Modifier</button>
+      ${it.loan ? '' : `<button class="btn ghost" id="lend">🤝 Prêter</button>`}
+      ${it.status !== 'possede' ? `<button class="btn ghost" id="got">✅ Je l'ai !</button>` : ''}
+    </div>
+    <div class="btns" style="margin-top:8px">
+      ${it.series && parseInt(it.volume) ? `<button class="btn ghost sm" id="next">＋ Tome ${parseInt(it.volume) + 1}</button>` : ''}
+      <button class="btn ghost sm" id="dup">⧉ Dupliquer</button>
+      <button class="btn danger sm" id="del">🗑 Supprimer</button>
+    </div>
+    ${(it.history || []).length ? `<details class="more"><summary>Historique</summary>${it.history.slice().reverse().map(h => `<div class="hint">${fmtDate(h.at)} — ${esc(h.txt)}</div>`).join('')}</details>` : ''}`);
+  body.querySelectorAll('[data-r]').forEach(b => b.onclick = () => { const n = +b.dataset.r; it.rating = it.rating === n ? 0 : n; upsertItem(it); body.querySelectorAll('[data-r]').forEach(x => x.classList.toggle('on', +x.dataset.r <= it.rating)); render(); });
+  $('#edit').onclick = () => openItemForm(it);
+  if ($('#lend')) $('#lend').onclick = () => openLend(it);
+  if ($('#ret')) $('#ret').onclick = () => { addHistory(it, `Rendu par ${it.loan.to}`); it.loan = null; upsertItem(it); render(); openDetail(it.id); };
+  if ($('#got')) $('#got').onclick = () => { it.status = 'possede'; it.acquiredAt = it.acquiredAt || todayISO(); addHistory(it, 'Acquis'); upsertItem(it); render(); openDetail(it.id); toast('Ajouté à ta collection 🎉'); };
+  if ($('#next')) $('#next').onclick = () => { const v = parseInt(it.volume) + 1; openItemForm({ ...blankItem(it.collectionId), title: `${it.series} — Tome ${v}`, series: it.series, volume: String(v), creators: it.creators, publisher: it.publisher, format: it.format, genre: it.genre, language: it.language }, true); };
+  $('#dup').onclick = () => openItemForm({ ...structuredClone(it), id: uid(), cover: it.cover?.type === 'url' ? it.cover : null, loan: null, history: [], createdAt: now() }, true);
+  $('#del').onclick = () => { if (confirm(`Supprimer « ${it.title} » ?`)) { deleteItem(it.id); closeSheet(); render(); toast('Supprimé'); } };
+}
+function openLend(it) {
+  const people = [...new Set(data.items.flatMap(i => [i.loan?.to, ...(i.history || []).map(h => (h.txt.match(/^Prêté à (.+)$/) || [])[1])]).filter(Boolean))];
+  const due = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10);
+  const b = openSheet('Prêter « ' + it.title + ' »', `
+    <div class="field"><label>À qui ?</label><input id="lto" list="lpeople" placeholder="Prénom"><datalist id="lpeople">${people.map(p => `<option value="${esc(p)}">`).join('')}</datalist></div>
+    <div class="cols"><div class="field"><label>Date du prêt</label><input type="date" id="ldate" value="${todayISO()}"></div><div class="field"><label>Retour prévu</label><input type="date" id="ldue" value="${due}"></div></div>
+    <button class="btn block" id="lok">Enregistrer le prêt</button>`);
+  $('#lok').onclick = () => { const to = $('#lto').value.trim(); if (!to) return toast('Indique un nom'); it.loan = { to, date: $('#ldate').value || todayISO(), due: $('#ldue').value || '' }; addHistory(it, `Prêté à ${to}`); upsertItem(it); render(); openDetail(it.id); };
+  setTimeout(() => $('#lto')?.focus(), 200);
+}
+
+/* ---------- Formulaire objet ---------- */
+function collOptions(sel, { allowNew = false, newType = '' } = {}) {
+  let h = data.collections.map(c => `<option value="${esc(c.id)}" ${c.id === sel ? 'selected' : ''}>${c.icon || collType(c).icon} ${esc(c.name)}</option>`).join('');
+  if (allowNew) h += Object.entries(TYPES).map(([k, t]) => `<option value="new:${k}" ${sel === 'new:' + k ? 'selected' : ''}>➕ Nouvelle : ${t.label}</option>`).join('');
+  return h;
+}
+function openItemForm(src, isNew = !getItem(src.id)) {
+  const it = structuredClone(src);
+  let newCoverBlob = null, newCoverURL = null;
+  const c = getColl(it.collectionId);
+  const T = collType(c);
+  const allTags = [...new Set(data.items.flatMap(i => i.tags || []))];
+  const locs = [...new Set(data.items.map(i => i.location).filter(Boolean))];
+  const seriesList = [...new Set(data.items.map(i => i.series).filter(Boolean))];
+  const f = (id, label, val, attrs = '') => `<div class="field"><label for="${id}">${label}</label><input id="${id}" value="${esc(val)}" ${attrs}></div>`;
+  const sel = (id, label, obj, val) => `<div class="field"><label for="${id}">${label}</label><select id="${id}">${Object.entries(obj).map(([k, v]) => `<option value="${k}" ${k === (val || '') ? 'selected' : ''}>${v}</option>`).join('')}</select></div>`;
+  const body = openSheet(isNew ? 'Nouvel objet' : 'Modifier', `
+    <div class="detail-top" style="align-items:flex-start;margin-bottom:12px"><div id="fcov" style="width:110px;flex:none">${coverHTML(it, { badges: false })}</div>
+      <div class="btns" style="flex-direction:column;flex:1">
+        <button class="btn ghost sm" id="cCam">📷 Prendre une photo</button>
+        <button class="btn ghost sm" id="cGal">🖼️ Galerie</button>
+        <button class="btn ghost sm" id="cUrl">🔗 Image par URL</button>
+        <button class="btn ghost sm" id="cAi">✨ Compléter via l'IA</button>
+      </div></div>
+    <div class="field"><label>Collection</label><select id="fColl">${collOptions(it.collectionId || ui.lastCollection, { allowNew: true })}</select></div>
+    ${f('fTitle', 'Titre *', it.title)}
+    ${f('fCreators', T.creator + '(s)', it.creators)}
+    <div class="cols"><div class="field"><label for="fSeries">Série</label><input id="fSeries" list="dlSeries" value="${esc(it.series)}"><datalist id="dlSeries">${seriesList.map(s => `<option value="${esc(s)}">`).join('')}</datalist></div>${f('fVolume', 'Tome / n°', it.volume, 'inputmode="numeric"')}</div>
+    <div class="cols">${sel('fStatus', 'Statut', STATUS, it.status)}${sel('fProgress', 'Avancement', PROGRESS, it.progress)}</div>
+    <div class="cols"><div class="field"><label for="fIsbn">ISBN / EAN</label><input id="fIsbn" value="${esc(it.isbn)}" inputmode="numeric"></div><div class="field"><label>&nbsp;</label><button class="btn ghost block" id="fLookup">🔎 Compléter</button></div></div>
+    <details class="more" ${isNew ? '' : 'open'}><summary>Plus de détails</summary>
+      ${f('fSubtitle', 'Sous-titre', it.subtitle)}
+      <div class="cols">${f('fPublisher', 'Éditeur / label / studio', it.publisher)}${f('fYear', 'Année', it.year, 'inputmode="numeric"')}</div>
+      <div class="cols">${f('fFormat', 'Format / support', it.format)}${f('fGenre', 'Genre', it.genre)}</div>
+      <div class="cols">${f('fLanguage', 'Langue', it.language)}${sel('fCondition', 'État', CONDITION, it.condition)}</div>
+      <div class="field"><label for="fTags">Tags (séparés par des virgules)</label><input id="fTags" list="dlTags" value="${esc((it.tags || []).join(', '))}"><datalist id="dlTags">${allTags.map(s => `<option value="${esc(s)}">`).join('')}</datalist></div>
+      <div class="cols"><div class="field"><label for="fLoc">Emplacement</label><input id="fLoc" list="dlLoc" value="${esc(it.location)}" placeholder="ex. Salon, étagère 2"><datalist id="dlLoc">${locs.map(s => `<option value="${esc(s)}">`).join('')}</datalist></div>${f('fCopies', 'Exemplaires', it.copies || 1, 'type="number" min="1"')}</div>
+      <div class="cols3">${f('fPaid', 'Prix payé €', it.pricePaid, 'inputmode="decimal"')}${f('fValue', 'Valeur €', it.value, 'inputmode="decimal"')}${f('fAcq', 'Acquis le', it.acquiredAt, 'type="date"')}</div>
+      <div class="field"><label for="fDesc">Résumé</label><textarea id="fDesc">${esc(it.description)}</textarea></div>
+    </details>
+    <div class="field"><label for="fNotes">Notes perso</label><textarea id="fNotes" placeholder="Dédicace, édition limitée, où je l'ai trouvé…">${esc(it.notes)}</textarea></div>
+    <div class="btns"><button class="btn" id="fSave">Enregistrer</button>${isNew ? '' : `<button class="btn ghost" id="fCancel">Annuler</button>`}</div>`,
+    { onClose: () => { if (newCoverURL) setTimeout(() => URL.revokeObjectURL(newCoverURL), 5000); } });
+
+  const setPreview = async url => { $('#fcov').innerHTML = `<div class="cover"><img src="${esc(url)}" alt="" referrerpolicy="no-referrer"></div>`; };
+  if (it.cover && !getItem(it.id)) coverURL(it.cover).then(u => u && setPreview(u));
+  const setBlob = blob => { newCoverBlob = blob; if (newCoverURL) URL.revokeObjectURL(newCoverURL); newCoverURL = URL.createObjectURL(blob); setPreview(newCoverURL); };
+  const fill = (o, overwrite = false) => {
+    const map = { title: 'fTitle', subtitle: 'fSubtitle', creators: 'fCreators', series: 'fSeries', volume: 'fVolume', publisher: 'fPublisher', year: 'fYear', format: 'fFormat', genre: 'fGenre', language: 'fLanguage', description: 'fDesc', isbn: 'fIsbn' };
+    for (const [k, id] of Object.entries(map)) { const el = $('#' + id); if (o[k] && (overwrite || !el.value.trim())) el.value = o[k]; }
+    if (o.tags?.length && !$('#fTags').value.trim()) $('#fTags').value = o.tags.join(', ');
+  };
+  $('#cCam').onclick = async () => { const [file] = await pickImages({ camera: true }); if (file) setBlob(await canvasToBlob(drawScaled(await fileToImage(file), 900), 0.8)); };
+  $('#cGal').onclick = async () => { const [file] = await pickImages(); if (file) setBlob(await canvasToBlob(drawScaled(await fileToImage(file), 900), 0.8)); };
+  $('#cUrl').onclick = () => { const u = prompt("URL de l'image :", it.cover?.type === 'url' ? it.cover.src : ''); if (u) { it.cover = { type: 'url', src: u.trim() }; newCoverBlob = null; setPreview(u.trim()); } };
+  $('#cAi').onclick = async () => {
+    let blob = newCoverBlob;
+    if (!blob) { const [file] = await pickImages({ camera: true }); if (!file) return; blob = await canvasToBlob(drawScaled(await fileToImage(file), 1568), 0.85); setBlob(await canvasToBlob(drawScaled(await fileToImage(file), 900), 0.8)); }
+    const btn = $('#cAi'); btn.disabled = true; btn.textContent = '✨ Analyse…';
+    try { const r = await askClaude([await blobToB64(blob)], aiPrompt(false)); const x = r.items?.[0]; if (x) { fill(x); toast('Champs vides complétés par l\'IA'); } else toast("L'IA n'a rien reconnu"); }
+    catch (e) { toast(e.message); } finally { btn.disabled = false; btn.textContent = '✨ Compléter via l\'IA'; }
+  };
+  $('#fLookup').onclick = async () => {
+    const code = cleanCode($('#fIsbn').value); if (!code) return toast('Saisis un ISBN / EAN');
+    const btn = $('#fLookup'); btn.disabled = true; btn.textContent = '…';
+    const r = isBookCode(code) ? await lookupISBN(code) : null;
+    btn.disabled = false; btn.textContent = '🔎 Compléter';
+    if (!r) return toast('Aucune fiche trouvée pour ce code');
+    fill(r); if (r.cover && !it.cover && !newCoverBlob) { it.cover = { type: 'url', src: r.cover }; setPreview(r.cover); }
+    toast('Fiche complétée');
+  };
+  if ($('#fCancel')) $('#fCancel').onclick = () => openDetail(it.id);
+  $('#fSave').onclick = async () => {
+    const title = $('#fTitle').value.trim(); if (!title) return toast('Le titre est obligatoire');
+    let cid = $('#fColl').value;
+    if (!cid) return toast('Choisis une collection');
+    if (cid.startsWith('new:')) cid = newCollection(cid.slice(4)).id;
+    const v = id => $('#' + id).value.trim();
+    Object.assign(it, { collectionId: cid, title, subtitle: v('fSubtitle'), creators: v('fCreators'), series: v('fSeries'), volume: v('fVolume'), status: v('fStatus'), progress: v('fProgress'), isbn: cleanCode(v('fIsbn')),
+      publisher: v('fPublisher'), year: v('fYear'), format: v('fFormat'), genre: v('fGenre'), language: v('fLanguage'), condition: v('fCondition'), tags: v('fTags').split(',').map(s => s.trim()).filter(Boolean),
+      location: v('fLoc'), copies: Math.max(1, parseInt(v('fCopies')) || 1), pricePaid: v('fPaid').replace(',', '.'), value: v('fValue').replace(',', '.'), acquiredAt: v('fAcq'), description: v('fDesc'), notes: v('fNotes') });
+    if (it.status === 'possede' && isNew && !it.acquiredAt) it.acquiredAt = todayISO();
+    if (newCoverBlob) { const old = it.cover; it.cover = await storeCoverBlob(it.id, newCoverBlob); if (old?.type === 'repo') removeMedia(old.path); }
+    if (isNew) { const d = findDuplicate(it); if (d && !confirm(`« ${d.title} » semble déjà présent. Ajouter quand même ?`)) return; }
+    ui.lastCollection = cid; ui.lastStatus = it.status; saveUI();
+    upsertItem(it); render(); openDetail(it.id); toast(isNew ? 'Ajouté ✓' : 'Enregistré ✓');
+  };
+}
+function findDuplicate(it, pool = data.items) {
+  return pool.find(x => x.id !== it.id && ((it.isbn && x.isbn === it.isbn) || (x.collectionId === it.collectionId && norm(x.title) === norm(it.title) && String(x.volume || '') === String(it.volume || ''))));
+}
+
+/* ---------- Collections ---------- */
+function openCollectionForm(c) {
+  const isNew = !c; c = c ? { ...c } : { id: uid(), name: '', type: 'livre', icon: TYPES.livre.icon, color: TYPES.livre.color, createdAt: now() };
+  const colors = ['#7c3aed', '#db2777', '#e11d48', '#ea580c', '#ca8a04', '#16a34a', '#0891b2', '#2563eb', '#4f46e5', '#64748b'];
+  const n = data.items.filter(i => i.collectionId === c.id).length;
+  openSheet(isNew ? 'Nouvelle collection' : 'Collection', `
+    <div class="field"><label>Type</label><select id="cType">${Object.entries(TYPES).map(([k, t]) => `<option value="${k}" ${k === c.type ? 'selected' : ''}>${t.icon} ${t.label}</option>`).join('')}</select></div>
+    <div class="field"><label>Nom</label><input id="cName" value="${esc(c.name)}" placeholder="ex. Mangas de Julien, Vinyles jazz…"></div>
+    <div class="cols"><div class="field"><label>Icône (emoji)</label><input id="cIcon" value="${esc(c.icon)}" maxlength="4"></div><div class="field"><label>Couleur</label><div class="chips" style="padding:4px 0">${colors.map(x => `<button class="chip ${x === c.color ? 'on' : ''}" data-col="${x}" style="background:${x};border-color:${x};width:30px;height:30px;padding:0"></button>`).join('')}</div></div></div>
+    <div class="btns"><button class="btn" id="cSave">Enregistrer</button>${isNew ? '' : `<button class="btn danger" id="cDel">Supprimer${n ? ` (+${n} objets)` : ''}</button>`}</div>`);
+  $('#cType').onchange = e => { const t = TYPES[e.target.value]; if (!$('#cName').value.trim() || Object.values(TYPES).some(x => x.label === $('#cName').value)) $('#cName').value = t.label; $('#cIcon').value = t.icon; };
+  $$('[data-col]').forEach(b => b.onclick = () => { c.color = b.dataset.col; $$('[data-col]').forEach(x => x.classList.toggle('on', x === b)); });
+  $('#cSave').onclick = () => { c.type = $('#cType').value; c.name = $('#cName').value.trim() || TYPES[c.type].label; c.icon = $('#cIcon').value.trim() || TYPES[c.type].icon; upsertCollection(c); closeSheet(() => { if (isNew) location.hash = '#/c/' + c.id; else render(); }); };
+  if ($('#cDel')) $('#cDel').onclick = () => { if (confirm(`Supprimer la collection « ${c.name} »${n ? ` et ses ${n} objets` : ''} ? Action définitive.`)) { deleteCollection(c.id); closeSheet(() => { location.hash = '#/'; render(); }); } };
+}
+
+/* ---------- Ajout : menu ---------- */
+function openAddMenu(preColl) {
+  const sel = preColl || ui.lastCollection || '';
+  const b = openSheet('Ajouter', `
+    <div class="cols"><div class="field"><label>Dans la collection</label><select id="aColl"><option value="">✨ Auto (choix de l'IA)</option>${collOptions(sel)}</select></div>
+    <div class="field"><label>Statut</label><select id="aStatus">${Object.entries(STATUS).map(([k, v]) => `<option value="${k}" ${k === ui.lastStatus ? 'selected' : ''}>${v}</option>`).join('')}</select></div></div>
+    <div class="menu">
+      <button class="ai" id="mAi1"><span class="ic">📸</span><span><b>Photo → fiche (IA)</b><small>Prends l'objet en photo : titre, auteur, série, tome, éditeur… sont remplis automatiquement</small></span></button>
+      <button class="ai" id="mAiN"><span class="ic">🗂️</span><span><b>Plusieurs objets d'un coup (IA)</b><small>Photo d'une étagère, d'une pile ou de tranches : une fiche par objet</small></span></button>
+      <button class="ai" id="mAiG"><span class="ic">🖼️</span><span><b>Depuis la galerie (IA)</b><small>Une ou plusieurs photos existantes</small></span></button>
+      <button id="mScan"><span class="ic">▦</span><span><b>Scanner des codes-barres</b><small>En rafale, comme Libib : ISBN → fiche + couverture</small></span></button>
+      <button id="mManual"><span class="ic">✍️</span><span><b>Saisie manuelle</b><small>Remplir la fiche soi-même</small></span></button>
+    </div>`);
+  const opts = () => { ui.lastStatus = $('#aStatus').value; saveUI(); return { coll: $('#aColl').value, status: $('#aStatus').value }; };
+  $('#mAi1').onclick = async () => { const o = opts(); const files = await pickImages({ camera: true }); if (files.length) runAI(files, false, o); };
+  $('#mAiN').onclick = async () => { const o = opts(); const files = await pickImages({ camera: true }); if (files.length) runAI(files, true, o); };
+  $('#mAiG').onclick = async () => { const o = opts(); const files = await pickImages({ multiple: true }); if (files.length) runAI(files, files.length === 1 ? null : false, o); };
+  $('#mScan').onclick = () => openScanner(opts());
+  $('#mManual').onclick = () => { const o = opts(); let cid = o.coll || data.collections[0]?.id || ''; openItemForm({ ...blankItem(cid), status: o.status }, true); };
+}
+
+/* ---------- Ajout rapide IA ---------- */
+async function runAI(files, multi, opts) {
+  if (!S.aiKey) { toast("Ajoute d'abord ta clé Gemini"); openSettings(); return; }
+  const body = openSheet('Analyse IA', `<div id="aiPrev"></div><div class="spinner"></div><p class="hint" style="text-align:center" id="aiStep">Préparation de la photo…</p>`);
+  const cands = [];
+  try {
+    for (let k = 0; k < files.length; k++) {
+      const img = await fileToImage(files[k]);
+      const full = await canvasToBlob(drawScaled(img, 1568), 0.85);
+      const prevU = URL.createObjectURL(full);
+      $('#aiPrev').innerHTML = `<img class="preview-img" src="${prevU}" alt="">`;
+      $('#aiStep').textContent = `Analyse de la photo ${k + 1}/${files.length}…`;
+      const isMulti = multi === null ? true : multi; // galerie 1 photo : l'IA détecte seule
+      const r = await askClaude([await blobToB64(full)], aiPrompt(isMulti));
+      for (const x of (r.items || []).slice(0, isMulti ? 40 : 1)) cands.push({ ...x, _img: img, _uid: uid() });
+    }
+    if (!cands.length) { body.innerHTML = `<div class="empty"><div class="big">🤔</div><p>Aucun objet reconnu. Essaie avec une photo plus nette, de face, bien éclairée.</p></div>`; return; }
+    $('#aiStep').textContent = `Recherche des couvertures et compléments…`;
+    await Promise.all(cands.map(async c => {
+      c.volume = String(c.volume ?? '').replace(/[^\dA-Za-z.\-]/g, '');
+      c.year = String(c.year ?? '').match(/\d{4}/)?.[0] || '';
+      const code = cleanCode(c.isbn); c.isbn = code;
+      if (code && isBookCode(code)) {
+        const r = await lookupISBN(code).catch(() => null);
+        if (r) { for (const k of ['title', 'creators', 'publisher', 'year', 'description', 'genre', 'subtitle']) if (!c[k] && r[k]) c[k] = r[k]; c._online = r.cover || ''; }
+      }
+      if (!c._online && /^(livre|bd|manga)$/.test(c.type) && c.title) {
+        try { const q = encodeURIComponent(`intitle:${c.title}${c.creators ? ' inauthor:' + c.creators.split(',')[0] : ''}`); const j = await (await fetch(`https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=1`)).json(); const il = j.items?.[0]?.volumeInfo?.imageLinks; if (il) c._online = (il.thumbnail || il.smallThumbnail).replace('http:', 'https:').replace('&edge=curl', ''); } catch {}
+      }
+      const multiPhoto = cands.filter(o => o._img === c._img).length > 1;
+      c._crop = multiPhoto && Array.isArray(c.bbox) && c.bbox.length === 4;
+      c._photoBlob = await canvasToBlob(drawScaled(c._img, 900, c._crop ? c.bbox : null), 0.8);
+      c._photoURL = URL.createObjectURL(c._photoBlob);
+      c._cover = c._online ? 'online' : 'photo';
+      c._on = true;
+      c._status = opts.status;
+      c._coll = opts.coll || matchCollection(c);
+    }));
+    renderReview(cands);
+  } catch (e) { console.error(e); body.innerHTML = `<div class="empty"><div class="big">⚠️</div><p>${esc(e.message)}</p><button class="btn" id="aiSet">Réglages IA</button></div>`; $('#aiSet').onclick = openSettings; }
+}
+function matchCollection(c) {
+  if (c.collection) { const m = data.collections.find(x => norm(x.name) === norm(c.collection)); if (m) return m.id; }
+  const t = TYPES[c.type] ? c.type : 'autre';
+  const byType = data.collections.find(x => x.type === t); if (byType) return byType.id;
+  return 'new:' + t;
+}
+function renderReview(cands) {
+  const pool = data.items;
+  const html = cands.map(c => {
+    const dup = findDuplicate({ id: '_', isbn: c.isbn, title: c.title, volume: c.volume, collectionId: c._coll }, pool);
+    const src = c._cover === 'online' ? c._online : c._cover === 'photo' ? c._photoURL : '';
+    const T = TYPES[c.type] || TYPES.autre;
+    return `<div class="cand ${c._on ? '' : 'off'}" data-u="${c._uid}">
+      <div class="cand-head"><div class="cover">${src ? `<img src="${esc(src)}" alt="" referrerpolicy="no-referrer">` : `<div class="ph" style="background:linear-gradient(160deg,${T.color},#312e81)"><i>${T.icon}</i></div>`}</div>
+        <div class="f">
+          <input data-k="title" value="${esc(c.title)}" placeholder="Titre">
+          <input data-k="creators" value="${esc(c.creators)}" placeholder="${T.creator}">
+          <div style="display:flex;gap:6px"><input data-k="series" value="${esc(c.series)}" placeholder="Série" style="flex:2"><input data-k="volume" value="${esc(c.volume)}" placeholder="Tome" style="flex:1"></div>
+        </div></div>
+      <div class="cols" style="margin-top:4px"><select data-k="_coll" class="chip" style="border-radius:10px;width:100%;min-width:0">${collOptions(c._coll, { allowNew: true })}</select><select data-k="_status" class="chip" style="border-radius:10px;width:100%;min-width:0">${Object.entries(STATUS).map(([k, v]) => `<option value="${k}" ${k === c._status ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
+      <div class="covopts">${c._online ? `<button class="chip ${c._cover === 'online' ? 'on' : ''}" data-cov="online">Couverture en ligne</button>` : ''}<button class="chip ${c._cover === 'photo' ? 'on' : ''}" data-cov="photo">${c._crop ? 'Recadrage photo' : 'Ma photo'}</button><button class="chip ${c._cover === 'none' ? 'on' : ''}" data-cov="none">Sans image</button></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;gap:8px">
+        <span>${[c.publisher, c.year, c.format, c.isbn].filter(Boolean).map(esc).join(' · ')}</span>
+        <span style="display:flex;gap:6px;align-items:center">${typeof c.confidence === 'number' ? `<span class="conf">${Math.round(c.confidence * 100)} %</span>` : ''}<label style="display:flex;gap:4px;align-items:center"><input type="checkbox" data-on ${c._on ? 'checked' : ''}> garder</label></span>
+      </div>
+      ${dup ? `<div class="warn">⚠︎ Déjà dans ta collection : « ${esc(dup.title)} »</div>` : ''}
+    </div>`;
+  }).join('');
+  const nOn = cands.filter(c => c._on).length;
+  openSheet(`${cands.length} objet${cands.length > 1 ? 's' : ''} reconnu${cands.length > 1 ? 's' : ''}`, `
+    <div id="rv"><p class="hint" style="margin-top:0">Vérifie et corrige si besoin, puis valide. Les autres infos trouvées (éditeur, année, genre, résumé…) sont ajoutées automatiquement.</p>
+    ${html}
+    <button class="btn block" id="rSave">Ajouter ${nOn} objet${nOn > 1 ? 's' : ''}</button></div>`,
+    { onClose: () => setTimeout(() => cands.forEach(c => c._photoURL && URL.revokeObjectURL(c._photoURL)), 3000) });
+  const find = el => cands.find(c => c._uid === el.closest('[data-u]')?.dataset.u) || {};
+  const rv = $('#rv');
+  rv.addEventListener('input', e => { const k = e.target.dataset.k; if (k) find(e.target)[k] = e.target.value; });
+  rv.addEventListener('change', e => {
+    const c = find(e.target);
+    if (e.target.dataset.k) { c[e.target.dataset.k] = e.target.value; }
+    if (e.target.hasAttribute('data-on')) { c._on = e.target.checked; e.target.closest('.cand').classList.toggle('off', !c._on); const n = cands.filter(x => x._on).length; $('#rSave').textContent = `Ajouter ${n} objet${n > 1 ? 's' : ''}`; }
+  });
+  rv.addEventListener('click', e => {
+    const b = e.target.closest('[data-cov]'); if (!b) return;
+    const c = find(b); c._cover = b.dataset.cov;
+    const box = b.closest('.cand'); box.querySelectorAll('[data-cov]').forEach(x => x.classList.toggle('on', x === b));
+    const src = c._cover === 'online' ? c._online : c._cover === 'photo' ? c._photoURL : '';
+    const T = TYPES[c.type] || TYPES.autre;
+    box.querySelector('.cover').innerHTML = src ? `<img src="${esc(src)}" alt="" referrerpolicy="no-referrer">` : `<div class="ph" style="background:linear-gradient(160deg,${T.color},#312e81)"><i>${T.icon}</i></div>`;
+  });
+  $('#rSave').onclick = async () => {
+    const btn = $('#rSave'); btn.disabled = true; btn.textContent = 'Ajout…';
+    const created = {}; const list = [];
+    for (const c of cands.filter(x => x._on && String(x.title || '').trim())) {
+      let cid = c._coll;
+      if (cid.startsWith('new:')) cid = created[cid] ||= newCollection(cid.slice(4)).id;
+      const it = { ...blankItem(cid), title: c.title.trim(), subtitle: c.subtitle || '', creators: c.creators || '', series: c.series || '', volume: c.volume || '', publisher: c.publisher || '', year: c.year || '', isbn: c.isbn || '', format: c.format || '', genre: c.genre || '', language: c.language || '', tags: Array.isArray(c.tags) ? c.tags.slice(0, 8) : [], description: c.description || '', status: c._status, source: 'ia' };
+      if (it.status === 'possede') it.acquiredAt = todayISO();
+      if (c._cover === 'online') it.cover = { type: 'url', src: c._online };
+      else if (c._cover === 'photo') it.cover = await storeCoverBlob(it.id, c._photoBlob);
+      list.push(it);
+      ui.lastCollection = cid;
+    }
+    saveUI();
+    if (list.length) upsertItems(list);
+    render();
+    toast(`${list.length} objet${list.length > 1 ? 's' : ''} ajouté${list.length > 1 ? 's' : ''} ✓`);
+    if (list.length === 1) openDetail(list[0].id); else closeSheet();
+  };
+}
+
+/* ---------- Scanner de codes-barres (rafale) ---------- */
+async function openScanner(opts) {
+  let stream = null, alive = true, timer = null;
+  const scanned = []; // {code, state, data}
+  const hasBD = 'BarcodeDetector' in window;
+  const body = openSheet('Scanner', `
+    ${hasBD ? `<div class="scanner"><video id="sv" playsinline muted></video><div class="aim"></div></div><p class="hint">Vise le code-barres : chaque code détecté s'ajoute à la liste.</p>` :
+      `<div class="card"><b>Scan vidéo non disponible sur ce navigateur</b><p class="hint">(c'est le cas sur iPhone/Safari). Prends le code-barres en photo, l'IA lit les chiffres — ou saisis-le.</p><button class="btn ghost block" id="sPhoto">📷 Photo du code-barres</button></div>`}
+    <div class="cols" style="margin-top:12px"><div class="field" style="margin:0"><input id="sCode" inputmode="numeric" placeholder="ISBN / EAN à la main"></div><button class="btn ghost" id="sAdd">Chercher</button></div>
+    <div id="sList" style="margin-top:12px"></div>
+    <button class="btn block" id="sSave" disabled>Ajouter</button>`,
+    { onClose: () => { alive = false; clearTimeout(timer); stream?.getTracks().forEach(t => t.stop()); } });
+  const draw = () => {
+    $('#sList').innerHTML = scanned.map((s, i) => {
+      const d = s.data; const dup = d && findDuplicate({ id: '_', isbn: s.code, title: d.title, collectionId: '' });
+      return `<div class="li" style="display:flex;gap:10px;align-items:center;background:var(--card);border-radius:12px;padding:8px;margin-bottom:6px">
+        <div class="cover" style="width:40px;flex:none">${d?.cover ? `<img src="${esc(d.cover)}" alt="" referrerpolicy="no-referrer">` : `<div class="ph" style="background:#a78bfa"><i style="font-size:16px">${s.state === 'busy' ? '⏳' : '▦'}</i></div>`}</div>
+        <div class="meta" style="flex:1;min-width:0"><b>${esc(d?.title || (s.state === 'busy' ? 'Recherche…' : 'Non trouvé — à compléter'))}</b><small>${esc(d?.creators || '')} · ${esc(s.code)}</small>${dup ? `<small class="warn">⚠︎ déjà présent</small>` : ''}</div>
+        <button class="icon-btn" data-rm="${i}">✕</button></div>`;
+    }).join('');
+    const n = scanned.length; const b = $('#sSave'); b.disabled = !n || scanned.some(s => s.state === 'busy'); b.textContent = `Ajouter ${n} objet${n > 1 ? 's' : ''}`;
+  };
+  $('#sList').addEventListener('click', e => { const b = e.target.closest('[data-rm]'); if (b) { scanned.splice(+b.dataset.rm, 1); draw(); } });
+  const handle = async raw => {
+    let code = cleanCode(raw); if (code.length === 10) code = isbn10to13(code);
+    if (code.length < 8 || scanned.some(s => s.code === code)) return;
+    navigator.vibrate?.(60);
+    const s = { code, state: 'busy', data: null }; scanned.unshift(s); draw();
+    s.data = isBookCode(code) ? await lookupISBN(code).catch(() => null) : null;
+    s.state = 'done'; draw();
+  };
+  $('#sAdd').onclick = () => { handle($('#sCode').value); $('#sCode').value = ''; };
+  $('#sCode').addEventListener('keydown', e => { if (e.key === 'Enter') $('#sAdd').click(); });
+  if ($('#sPhoto')) $('#sPhoto').onclick = async () => {
+    const [file] = await pickImages({ camera: true }); if (!file) return;
+    const btn = $('#sPhoto'); btn.disabled = true; btn.textContent = 'Lecture…';
+    try { const r = await askClaude([await blobToB64(await canvasToBlob(drawScaled(await fileToImage(file), 1568), 0.9))], BARCODE_PROMPT, 300); (r.codes || []).forEach(handle); if (!(r.codes || []).length) toast('Aucun code lisible'); }
+    catch (e) { toast(e.message); } finally { btn.disabled = false; btn.textContent = '📷 Photo du code-barres'; }
+  };
+  $('#sSave').onclick = () => {
+    let cid = opts.coll || data.collections.find(c => c.type === 'livre')?.id || data.collections[0]?.id;
+    if (!cid) cid = newCollection('livre').id;
+    const list = scanned.map(s => {
+      const d = s.data || {};
+      const it = { ...blankItem(cid), title: d.title || `Code ${s.code}`, subtitle: d.subtitle || '', creators: d.creators || '', publisher: d.publisher || '', year: d.year || '', isbn: s.code, description: d.description || '', genre: d.genre || '', language: d.language || '', status: opts.status, source: 'scan' };
+      const m = (it.title).match(/^(.*?)(?:,|\s[-–—:]\s|\s)(?:t\.?|tome|vol\.?|volume|n°|#)\s*(\d+)\b/i);
+      if (m) { it.series = m[1].trim(); it.volume = m[2]; }
+      if (it.status === 'possede') it.acquiredAt = todayISO();
+      if (d.cover) it.cover = { type: 'url', src: d.cover };
+      return it;
+    });
+    upsertItems(list); ui.lastCollection = cid; saveUI(); closeSheet(); render();
+    toast(`${list.length} objet${list.length > 1 ? 's' : ''} ajouté${list.length > 1 ? 's' : ''} ✓`);
+  };
+  draw();
+  if (hasBD) {
+    try {
+      const formats = (await BarcodeDetector.getSupportedFormats?.()) || [];
+      const det = new BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e'].filter(f => !formats.length || formats.includes(f)) });
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1280 } } });
+      if (!alive) { stream.getTracks().forEach(t => t.stop()); return; }
+      const v = $('#sv'); v.srcObject = stream; await v.play();
+      const loop = async () => { if (!alive) return; try { for (const c of await det.detect(v)) handle(c.rawValue); } catch {} timer = setTimeout(loop, 300); };
+      loop();
+    } catch (e) { toast('Caméra indisponible : ' + e.message); }
+  }
+}
+
+/* ---------- Import / export ---------- */
+function download(name, content, type) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([content], { type })); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 3000); }
+const CSV_COLS = ['collection', 'title', 'subtitle', 'creators', 'series', 'volume', 'publisher', 'year', 'isbn', 'format', 'genre', 'language', 'tags', 'status', 'progress', 'condition', 'rating', 'pricePaid', 'value', 'acquiredAt', 'location', 'copies', 'loan_to', 'loan_due', 'notes', 'description'];
+function toCSV(items) {
+  const q = v => { const s = String(v ?? ''); return /[",\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+  return '﻿' + [CSV_COLS.join(','), ...items.map(it => CSV_COLS.map(k => q(k === 'collection' ? getColl(it.collectionId)?.name : k === 'tags' ? (it.tags || []).join('; ') : k === 'loan_to' ? it.loan?.to : k === 'loan_due' ? it.loan?.due : it[k])).join(','))].join('\n');
+}
+function parseCSV(text) {
+  text = text.replace(/^﻿/, '');
+  const first = text.split('\n')[0]; const sep = (first.match(/;/g) || []).length > (first.match(/,/g) || []).length ? ';' : first.includes('\t') && !first.includes(',') ? '\t' : ',';
+  const rows = []; let row = [], cur = '', inq = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inq) { if (ch === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else inq = false; } else cur += ch; }
+    else if (ch === '"') inq = true; else if (ch === sep) { row.push(cur); cur = ''; } else if (ch === '\n' || ch === '\r') { if (ch === '\r' && text[i + 1] === '\n') i++; row.push(cur); rows.push(row); row = []; cur = ''; } else cur += ch;
+  }
+  if (cur || row.length) { row.push(cur); rows.push(row); }
+  const head = rows.shift().map(h => norm(h).replace(/\s+/g, '_'));
+  return rows.filter(r => r.some(x => x.trim())).map(r => Object.fromEntries(head.map((h, i) => [h, (r[i] || '').trim()])));
+}
+function openImport() {
+  openSheet('Importer', `
+    <p class="hint" style="margin-top:0">• <b>JSON</b> : une sauvegarde de cette appli (fusionnée avec l'existant).<br>• <b>CSV</b> : export Libib, ou tout CSV avec des colonnes titre / auteur / ISBN…</p>
+    <div class="field"><label>Collection cible (pour un CSV)</label><select id="iColl"><option value="">Selon la colonne « collection » / type</option>${collOptions('', { allowNew: true })}</select></div>
+    <div class="field"><label>Fichier</label><input type="file" id="iFile" accept=".json,.csv,.tsv,.txt"></div>
+    <label class="hint" style="display:flex;gap:6px;align-items:center;margin-bottom:12px"><input type="checkbox" id="iCovers" checked> Chercher les couvertures via l'ISBN</label>
+    <button class="btn block" id="iGo">Importer</button><p class="hint" id="iMsg"></p>`);
+  $('#iGo').onclick = async () => {
+    const f = $('#iFile').files[0]; if (!f) return toast('Choisis un fichier');
+    const text = await f.text();
+    if (/\.json$/i.test(f.name) || text.trim().startsWith('{')) {
+      try { const d = JSON.parse(text); if (!Array.isArray(d.items)) throw new Error('format inconnu'); data = mergeData(data, { ...emptyData(), ...d }); touch(); closeSheet(); render(); toast(`Import JSON : ${d.items.length} objets fusionnés`); }
+      catch (e) { toast('JSON invalide : ' + e.message); }
+      return;
+    }
+    const rows = parseCSV(text); if (!rows.length) return toast('CSV vide');
+    const pick = (r, ...keys) => { for (const k of keys) if (r[k]) return r[k]; return ''; };
+    const target = $('#iColl').value; const created = {}; const list = [];
+    const typeOf = s => { s = norm(s); return /manga/.test(s) ? 'manga' : /bd|comic|bande/.test(s) ? 'bd' : /music|cd|vinyl|album/.test(s) ? 'musique' : /movie|film|dvd|blu/.test(s) ? 'film' : /video_?game|jeu.?video|game/.test(s) ? 'jeu_video' : /lego/.test(s) ? 'lego' : 'livre'; };
+    for (const r of rows) {
+      const title = pick(r, 'title', 'titre', 'name', 'nom'); if (!title) continue;
+      let cid = target;
+      if (!cid) { const cname = pick(r, 'collection', 'group', 'library'); const typ = typeOf(pick(r, 'item_type', 'type', 'collection', 'group') || 'livre'); const ex = cname ? data.collections.find(c => norm(c.name) === norm(cname)) : data.collections.find(c => c.type === typ); cid = ex ? ex.id : 'new:' + typ + (cname ? ':' + cname : ''); }
+      if (cid.startsWith('new:')) { const [, t, ...n] = cid.split(':'); cid = created[cid] ||= newCollection(t, n.join(':') || undefined).id; }
+      const first = pick(r, 'first_name'), last = pick(r, 'last_name');
+      const st = norm(pick(r, 'status', 'statut'));
+      const it = { ...blankItem(cid), title, subtitle: pick(r, 'subtitle', 'sous-titre'), creators: pick(r, 'creators', 'creator', 'authors', 'author', 'auteur', 'auteurs', 'artist', 'artiste') || [first, last].filter(Boolean).join(' '),
+        series: pick(r, 'series', 'serie'), volume: pick(r, 'volume', 'tome'), publisher: pick(r, 'publisher', 'editeur'), year: (pick(r, 'publish_date', 'year', 'annee', 'date') .match(/\d{4}/) || [''])[0],
+        isbn: cleanCode(pick(r, 'ean_isbn13', 'isbn13', 'isbn', 'ean', 'upc_isbn10', 'upc')), format: pick(r, 'format'), genre: pick(r, 'genre'), tags: pick(r, 'tags').split(/[;,]/).map(s => s.trim()).filter(Boolean),
+        description: pick(r, 'description', 'resume'), notes: [pick(r, 'notes'), pick(r, 'review')].filter(Boolean).join('\n'), rating: Math.min(5, Math.round(parseFloat(pick(r, 'rating', 'note')) || 0)), pricePaid: pick(r, 'price', 'pricepaid', 'prix'), value: pick(r, 'value', 'valeur'),
+        location: pick(r, 'location', 'emplacement'), copies: parseInt(pick(r, 'copies')) || 1,
+        status: /wish|souhait/.test(st) ? 'souhait' : 'possede', progress: /complet|termin|finished|read/.test(st) ? 'termine' : /progress|cours/.test(st) ? 'en_cours' : /not.?begun|a.?lire/.test(st) ? 'a_faire' : '', source: 'import' };
+      if (!it.series) { const m = title.match(/^(.*?)(?:,|\s[-–—:]\s|\s)(?:t\.?|tome|vol\.?|volume|n°|#)\s*(\d+)\b/i); if (m) { it.series = m[1].trim(); it.volume = m[2]; } }
+      if (!findDuplicate(it, [...data.items, ...list])) list.push(it);
+    }
+    if ($('#iCovers').checked) {
+      const need = list.filter(i => i.isbn && isBookCode(i.isbn)).slice(0, 300);
+      for (let k = 0; k < need.length; k++) { $('#iMsg').textContent = `Couvertures : ${k + 1}/${need.length}…`; const r = await lookupISBN(need[k].isbn).catch(() => null); if (r?.cover) need[k].cover = { type: 'url', src: r.cover }; }
+    }
+    upsertItems(list); closeSheet(); render(); toast(`${list.length} objets importés (doublons ignorés)`);
+  };
+}
+
+/* ---------- Réglages ---------- */
+function openSettings() {
+  const f = (id, label, val, attrs = '') => `<div class="field"><label for="${id}">${label}</label><input id="${id}" value="${esc(val)}" ${attrs}></div>`;
+  openSheet('Réglages', `
+    <h3 style="margin:4px 0 8px">☁︎ Stockage GitHub (dépôt privé)</h3>
+    <p class="hint" style="margin-top:0">Même dépôt que l'appli Violette. Les données vont dans un fichier JSON distinct, les photos dans un dossier dédié.</p>
+    <div class="cols">${f('sOwner', 'Propriétaire', S.owner, 'autocapitalize="off"')}${f('sRepo', 'Dépôt', S.repo, 'autocapitalize="off"')}</div>
+    <div class="cols">${f('sBranch', 'Branche', S.branch, 'autocapitalize="off"')}${f('sPath', 'Fichier JSON', S.path, 'autocapitalize="off"')}</div>
+    ${f('sMedia', 'Dossier des photos', S.mediaDir, 'autocapitalize="off"')}
+    ${f('sToken', 'Jeton GitHub (fine-grained, Contents : read & write)', S.token, 'type="password" autocomplete="off"')}
+    <div class="btns" style="margin-bottom:18px"><button class="btn ghost sm" id="sTest">Tester la connexion</button><button class="btn ghost sm" id="sPull">Recharger depuis GitHub</button></div>
+    <h3 style="margin:4px 0 8px">✨ Ajout rapide par IA</h3>
+    ${f('sAiKey', 'Clé API Gemini (partagée par toutes les applis)', S.aiKey, 'type="password" autocomplete="off" placeholder="AIza…"')}
+    <div class="field"><label for="sAiModel">Modèle</label><select id="sAiModel">${AI_MODELS.map(([v, l]) => `<option value="${v}" ${v === S.aiModel ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+    <p class="hint">La clé et le jeton restent sur cet appareil (stockage local du navigateur) ; ils ne sont jamais écrits dans le dépôt.</p>
+    <h3 style="margin:14px 0 8px">⌂ Hub</h3>
+    ${f('sHub', "Adresse de l'écran d'accueil (tuiles)", S.hubUrl)}
+    <button class="btn block" id="sSave">Enregistrer</button>
+    <button class="btn ghost block" id="sLogout" style="margin-top:12px;color:#ff4f5e">Se déconnecter de cet appareil</button>
+    <button class="btn danger block" id="sReset" style="margin-top:10px">Vider les données locales de cet appareil</button>`);
+  const collect = () => ({ owner: $('#sOwner').value.trim(), repo: $('#sRepo').value.trim(), branch: $('#sBranch').value.trim() || 'main', path: $('#sPath').value.trim() || DEFAULT_SETTINGS.path, mediaDir: $('#sMedia').value.trim() || DEFAULT_SETTINGS.mediaDir, token: $('#sToken').value.trim(), aiKey: $('#sAiKey').value.trim(), aiModel: $('#sAiModel').value, hubUrl: $('#sHub').value.trim() || './index.html' });
+  const apply = () => { S = collect(); write(LS.settings, S); const sh = read(LS.shared, {}) || {}; write(LS.shared, { ...sh, owner: S.owner, repo: S.repo, branch: S.branch, token: S.token }); write('hub.ai', { key: S.aiKey, model: S.aiModel }); $('#hubLink').href = S.hubUrl; };
+  $('#sTest').onclick = async () => {
+    apply(); if (!gh.ok()) return toast('Renseigne propriétaire, dépôt et jeton');
+    try { const r = await fetch(`https://api.github.com/repos/${S.owner}/${S.repo}`, { headers: gh.h() }); if (!r.ok) throw new Error(await errMsg(r)); const j = await r.json(); const f = await gh.getText(S.path); toast(`✓ ${j.full_name}${j.private ? ' (privé)' : ''} — ${f ? 'fichier trouvé' : 'fichier créé à la 1re synchro'}`); }
+    catch (e) { toast('✗ ' + e.message); }
+  };
+  $('#sPull').onclick = () => { apply(); sync(); };
+  $('#sLogout').onclick = () => closeSheet(() => kitLogout());
+  $('#sSave').onclick = () => { apply(); closeSheet(); toast('Réglages enregistrés'); scheduleSync(200); };
+  $('#sReset').onclick = () => { if (confirm('Effacer les données locales ? (celles déjà synchronisées sur GitHub seront rechargées)')) { data = emptyData(); syncMeta = { sha: null, dirty: false, lastSync: 0, pendingMedia: [] }; write(LS.data, data); saveSync(); closeSheet(); render(); if (gh.ok()) sync(); } };
+}
+
+/* ---------- Démarrage ---------- */
+$('#hubLink').href = S.hubUrl;
+$('#settingsBtn').onclick = openSettings;
+$('#syncBtn').onclick = () => gh.ok() ? sync() : openSettings();
+$('#fab').onclick = () => { const [r, a] = route(); openAddMenu(r === 'c' ? a : ''); };
+$$('.bottom [data-nav]').forEach(b => b.onclick = () => { if (location.hash === b.dataset.nav || (!location.hash && b.dataset.nav === '#/')) render(); else location.hash = b.dataset.nav; });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && gh.ok()) sync(); });
+render();
+if (gh.ok()) sync(); else setSync('local', 'Configure GitHub dans les réglages');
+// Accès direct : collections.html#add (raccourci depuis le hub)
+if (location.hash === '#add') { history.replaceState(null, '', '#/'); openAddMenu(''); }
+</script>
+</body>
+</html>

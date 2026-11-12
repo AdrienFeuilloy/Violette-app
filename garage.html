@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="ui/kit.css">
+<title>Garage</title>
+<style>
+.km-big{font-size:34px;font-weight:800;color:var(--acc);text-align:center;margin:6px 0}
+.pick{display:flex;align-items:center;gap:10px;padding:8px 2px;border-bottom:1px solid var(--line);font-size:14px}
+.pick input{width:20px;height:20px;accent-color:var(--acc)}
+.yr{display:flex;justify-content:space-between;font-weight:800;margin:14px 2px 6px;font-size:13px;color:var(--mut)}
+</style>
+</head>
+<body>
+<header id="hero"></header>
+<main class="k-wrap" id="main"></main>
+<script type="module">
+import { initApp, publishSummary, hero, DocSync, read, write, esc, $, $$, uid, now, todayISO, isISO, frDate, daysTo, addMonths, eur, openSheet, closeSheet, toast, bubble, openCommonSettings, nav } from './ui/kit.js';
+initApp('garage');
+
+/* ---------- Données de départ (fichier « Entretien voiture ») ---------- */
+const it = (name, km, months, last, garage, price, next, extra = {}) => ({ id: uid(), name, every: { km, months }, last: { date: last, km: null, garage, price }, next, createdAt: now(), updatedAt: now(), ...extra });
+// Données de départ : rangées dans le dépôt privé (JSON_GARAGE.json), jamais dans ce code public.
+const seed = () => ({ app: 'garage', schema: 1, items: [], logs: [], kms: [], tombstones: {}, settings: { kmPerYear: 12000, car: 'Ma voiture' }, settingsAt: 0, updatedAt: 0 });
+const store = new DocSync({ key: 'garage.data.v1', path: 'JSON_GARAGE.json', label: 'Garage', lists: ['items', 'logs', 'kms'], empty: seed, onRemote: () => render() });
+const D = () => store.data;
+if (!read('garage.data.v1')) store.save();
+
+/* ---------- Calculs ---------- */
+const curKm = () => { const k = [...D().kms].sort((a, b) => a.date.localeCompare(b.date) || a.km - b.km).pop(); return k ? k.km : null; };
+function kmPerDay() {
+  const k = [...D().kms].sort((a, b) => a.date.localeCompare(b.date));
+  if (k.length >= 2) { const a = k[0], b = k.at(-1); const days = (new Date(b.date) - new Date(a.date)) / 864e5; if (days >= 30 && b.km > a.km) return (b.km - a.km) / days; }
+  return (D().settings.kmPerYear || 12000) / 365;
+}
+const revision = () => D().items.find(x => x.isRevision);
+function due(x) {
+  const n = x.next?.revision ? (revision()?.next || {}) : (x.next || {});
+  const km = curKm();
+  const kmLeft = n.km != null && km != null ? n.km - km : null;
+  const dDays = isISO(n.date) ? daysTo(n.date) : null;
+  const kmDays = kmLeft != null ? Math.round(kmLeft / kmPerDay()) : null;
+  const days = [dDays, kmDays].filter(v => v != null).sort((a, b) => a - b)[0] ?? null;
+  const status = days == null ? 'none' : days < 0 || (kmLeft != null && kmLeft <= 0) ? 'late' : (days <= 60 || (kmLeft != null && kmLeft <= 1500)) ? 'soon' : 'ok';
+  const parts = [];
+  if (n.km != null) parts.push(`${n.km.toLocaleString('fr-FR')} km${kmLeft != null ? ` (${kmLeft <= 0 ? 'dépassé' : 'encore ' + kmLeft.toLocaleString('fr-FR') + ' km'})` : ''}`);
+  if (isISO(n.date)) parts.push(n.approx ? 'en ' + n.date.slice(0, 4) : frDate(n.date, { month: 'long', year: 'numeric' }));
+  return { status, days, kmLeft, txt: parts.join(' ou ') || '—', viaRevision: !!x.next?.revision, needKm: n.km != null && km == null };
+}
+const ST = { late: ['En retard', 'bad'], soon: ['Bientôt', 'warn'], ok: ['OK', 'ok'], none: ['Suivi libre', 'mut'] };
+
+/* ---------- Affichage ---------- */
+let tab = 'todo';
+function render() {
+  const km = curKm(), yr = new Date().getFullYear();
+  const list = D().items.map(x => ({ x, d: due(x) }));
+  const late = list.filter(o => o.d.status === 'late'), soon = list.filter(o => o.d.status === 'soon');
+  const spentYear = D().logs.filter(l => (l.date || '').startsWith(String(yr))).reduce((s, l) => s + (+l.price || 0), 0);
+  hero($('#hero'), {
+    app: 'garage', title: 'Garage', sub: '‹ Accueil · ' + (D().settings.car || 'Ma voiture'), subHref: './index.html',
+    actions: store.pill() + `<button class="k-ibtn" id="set" aria-label="Réglages">⚙︎</button>`,
+    rings: [
+      { label: 'Compteur', html: `<b style="font-size:${km ? 14 : 18}px;color:var(--acc)">${km ? Math.round(km / 1000) + 'k' : '?'}</b>`, on: kmSheet },
+      { label: 'En retard', value: late.length, color: late.length ? '#ff4f5e' : undefined, on: () => { tab = 'todo'; render(); } },
+      { label: 'Bientôt', value: soon.length, color: soon.length ? '#e08a00' : undefined, on: () => { tab = 'todo'; render(); } },
+      { label: 'Dépensé ' + yr, html: `<b style="font-size:13px;color:var(--acc)">${Math.round(spentYear)} €</b>`, on: () => { tab = 'hist'; render(); } },
+    ],
+    after: el => { store.bindPills(el); $('#set', el).onclick = settings; }
+  });
+  const tip = km == null ? 'Indique le kilométrage actuel (touche « Compteur ») pour que je calcule les échéances en km.'
+    : late.length ? `${late.length} entretien${late.length > 1 ? 's' : ''} en retard : ${late.slice(0, 2).map(o => o.x.name.toLowerCase()).join(', ')}…`
+    : soon.length ? `À prévoir bientôt : ${soon[0].x.name.toLowerCase()} (${soon[0].d.txt}).` : 'Tout est à jour, la voiture ronronne… presque autant que moi.';
+  let body = bubble(esc(tip)) + `<div class="k-chips"><button class="k-chip ${tab === 'todo' ? 'on' : ''}" data-t="todo">À faire</button><button class="k-chip ${tab === 'hist' ? 'on' : ''}" data-t="hist">Historique</button></div>`;
+  if (tab === 'todo') {
+    const groups = [['En retard', late], ['Bientôt', soon],
+      ['Plus tard', list.filter(o => o.d.status === 'ok' && !o.d.viaRevision && !o.x.isRevision).sort((a, b) => (a.d.days ?? 9e9) - (b.d.days ?? 9e9))],
+      ['Révision', list.filter(o => (o.d.viaRevision || o.x.isRevision) && !['late', 'soon'].includes(o.d.status))],
+      ['Suivi libre', list.filter(o => o.d.status === 'none' && !o.d.viaRevision)]];
+    body += groups.filter(g => g[1].length).map(([t, l]) => `<div class="k-sec">${t}</div><div class="k-card flush">${l.map(({ x, d }) => `<button class="k-row" data-id="${x.id}">
+      <span class="k-dot ${d.status === 'late' || d.status === 'soon' ? 'full' : ''}" style="border-color:${d.status === 'late' ? 'var(--bad)' : d.status === 'soon' ? 'var(--warn)' : 'var(--acc)'};${d.status === 'late' ? 'background:var(--bad)' : d.status === 'soon' ? 'background:var(--warn)' : ''}"></span>
+      <span class="k-main"><b>${esc(x.name)}</b><small>${d.viaRevision ? 'À la prochaine révision · ' : ''}${esc(d.txt)}</small></span>
+      ${d.needKm ? '<span class="k-tag mut">km ?</span>' : ''}</button>`).join('')}</div>`).join('');
+  } else {
+    const logs = [...D().logs].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    const years = [...new Set(logs.map(l => (l.date || '????').slice(0, 4)))];
+    body += years.map(y => { const L = logs.filter(l => (l.date || '????').startsWith(y)); const tot = L.reduce((s, l) => s + (+l.price || 0), 0);
+      return `<div class="yr"><span>${y}</span><span>${eur(tot)}</span></div><div class="k-card flush">${L.map(l => `<button class="k-row" data-log="${l.id}"><span class="k-main"><b>${esc(l.label)}</b><small>${frDate(l.date)}${l.km ? ' · ' + l.km.toLocaleString('fr-FR') + ' km' : ''}${l.garage ? ' · ' + esc(l.garage) : ''}</small></span><span class="k-side">${l.price ? eur(l.price) : ''}</span></button>`).join('')}</div>`; }).join('') || '<div class="k-empty">Aucune intervention.</div>';
+  }
+  $('#main').innerHTML = body;
+  $$('[data-t]').forEach(b => b.onclick = () => { tab = b.dataset.t; render(); });
+  $$('[data-id]').forEach(b => b.onclick = () => openItem(b.dataset.id));
+  $$('[data-log]').forEach(b => b.onclick = () => openLog(b.dataset.log));
+  const first = late[0] || soon[0];
+  publishSummary('garage', { line: late.length ? `${late.length} entretien${late.length > 1 ? 's' : ''} en retard` : soon.length ? `Bientôt : ${soon[0].x.name}` : km == null ? 'Kilométrage à renseigner' : 'Tout est à jour', alert: !!late.length,
+    urgent: first ? { title: first.x.name, sub: (first.d.status === 'late' ? 'En retard · ' : 'Bientôt · ') + first.d.txt, k: 'Garage' } : null });
+}
+
+/* ---------- Compteur ---------- */
+function kmSheet() {
+  const km = curKm();
+  const body = openSheet('Kilométrage', `<div class="km-big">${km ? km.toLocaleString('fr-FR') + ' km' : '—'}</div>
+    <div class="k-grid2"><div class="k-field"><label>Nouveau relevé (km)</label><input id="kmV" type="number" inputmode="numeric" placeholder="ex. 143500"></div><div class="k-field"><label>Date</label><input id="kmD" type="date" value="${todayISO()}"></div></div>
+    <button class="k-btn block" id="kmOk">Enregistrer</button>
+    ${D().kms.length ? `<div class="k-sec">Relevés</div><div class="k-card flush">${[...D().kms].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 10).map(k => `<div class="k-row"><span class="k-main"><b>${k.km.toLocaleString('fr-FR')} km</b><small>${frDate(k.date)}</small></span></div>`).join('')}</div>` : ''}
+    <p class="k-hint">Je m'en sers pour estimer quand tu atteindras les échéances en km (${Math.round(kmPerDay() * 365).toLocaleString('fr-FR')} km/an estimés).</p>`);
+  $('#kmOk', body).onclick = () => { const v = parseInt($('#kmV', body).value); if (!v) return toast('Indique un kilométrage'); D().kms.push({ id: uid(), km: v, date: $('#kmD', body).value || todayISO(), createdAt: now(), updatedAt: now() }); store.save(); closeSheet(); render(); toast('Compteur mis à jour'); };
+  setTimeout(() => $('#kmV', body)?.focus(), 250);
+}
+
+/* ---------- Entretien ---------- */
+const garages = () => [...new Set([...D().items.map(x => x.last?.garage), ...D().logs.map(l => l.garage)].filter(Boolean))];
+function openItem(id) {
+  const x = D().items.find(i => i.id === id); if (!x) return;
+  const d = due(x), [stl, stc] = ST[d.status];
+  const every = [x.every.km && x.every.km.toLocaleString('fr-FR') + ' km', x.every.months && (x.every.months % 12 ? x.every.months + ' mois' : x.every.months / 12 + ' an' + (x.every.months > 12 ? 's' : ''))].filter(Boolean).join(' ou ');
+  const body = openSheet(x.name, `<span class="k-tag ${stc}">${stl}</span>
+    <div class="k-card" style="margin-top:10px">
+      <div class="k-hint">Prochain</div><b>${d.viaRevision ? 'À la prochaine révision · ' : ''}${esc(d.txt)}</b>
+      <div class="k-hint" style="margin-top:8px">Périodicité</div><b>${every || 'Libre'}</b>
+      <div class="k-hint" style="margin-top:8px">Dernière fois</div><b>${x.last?.date ? frDate(x.last.date) : 'Jamais / inconnu'}${x.last?.km ? ' · ' + x.last.km.toLocaleString('fr-FR') + ' km' : ''}${x.last?.garage ? ' · ' + esc(x.last.garage) : ''}${x.last?.price ? ' · ' + eur(x.last.price) : ''}</b>
+      ${x.estPrice ? `<div class="k-hint" style="margin-top:8px">Prix estimé</div><b>${eur(x.estPrice)}</b>` : ''}
+      ${x.notes ? `<p>${esc(x.notes)}</p>` : ''}
+    </div>
+    <div class="k-btns"><button class="k-btn" id="done">✔ C'est fait</button><button class="k-btn ghost" id="edit">Modifier</button></div>
+    <button class="k-btn danger block" id="del" style="margin-top:8px">Supprimer</button>`);
+  $('#done', body).onclick = () => doneSheet([x.id]);
+  $('#edit', body).onclick = () => editItem(x);
+  $('#del', body).onclick = () => { if (confirm(`Ne plus suivre « ${x.name} » ?`)) { D().items = D().items.filter(i => i.id !== x.id); D().tombstones[x.id] = now(); store.save(); closeSheet(); render(); } };
+}
+function doneSheet(preIds = []) {
+  const km = curKm();
+  const body = openSheet('Intervention', `
+    <div class="k-field"><label>Description</label><input id="dL" placeholder="ex. Révision, vidange…" value="${esc(preIds.length === 1 ? D().items.find(i => i.id === preIds[0])?.name || '' : '')}"></div>
+    <div class="k-grid2"><div class="k-field"><label>Date</label><input id="dD" type="date" value="${todayISO()}"></div><div class="k-field"><label>Kilométrage</label><input id="dK" type="number" inputmode="numeric" value="${km || ''}"></div></div>
+    <div class="k-grid2"><div class="k-field"><label>Garage</label><input id="dG" list="gl"><datalist id="gl">${garages().map(g => `<option value="${esc(g)}">`).join('')}</datalist></div><div class="k-field"><label>Prix total (€)</label><input id="dP" inputmode="decimal"></div></div>
+    <div class="k-sec">Ce qui a été fait</div>
+    ${D().items.map(i => `<label class="pick"><input type="checkbox" value="${i.id}" ${preIds.includes(i.id) ? 'checked' : ''}> ${esc(i.name)}</label>`).join('')}
+    <div class="k-field" style="margin-top:10px"><label>Notes</label><textarea id="dN"></textarea></div>
+    <button class="k-btn block" id="dOk">Enregistrer</button>`);
+  $('#dOk', body).onclick = () => {
+    const ids = $$('input[type=checkbox]:checked', body).map(c => c.value);
+    const date = $('#dD', body).value || todayISO(), kmv = parseInt($('#dK', body).value) || null, garage = $('#dG', body).value.trim(), price = parseFloat($('#dP', body).value.replace(',', '.')) || null;
+    if (!ids.length) return toast('Coche au moins un entretien');
+    const label = $('#dL', body).value.trim() || D().items.filter(i => ids.includes(i.id)).map(i => i.name).join(', ');
+    D().logs.push({ id: uid(), date, km: kmv, garage, label, price, itemIds: ids, notes: $('#dN', body).value.trim(), createdAt: now(), updatedAt: now() });
+    for (const i of D().items.filter(i => ids.includes(i.id))) {
+      i.last = { date, km: kmv, garage, price: ids.length === 1 ? price : null };
+      if (!i.next?.revision) i.next = { km: i.every.km && kmv ? kmv + i.every.km : (i.every.km ? null : undefined), date: i.every.months ? addMonths(date, i.every.months) : undefined };
+      i.updatedAt = now();
+    }
+    if (kmv && (!curKm() || kmv >= curKm())) D().kms.push({ id: uid(), km: kmv, date, createdAt: now(), updatedAt: now() });
+    store.save(); closeSheet(); render(); toast('Intervention enregistrée ✓');
+  };
+}
+function editItem(x) {
+  const isNew = !x;
+  x = x ? structuredClone(x) : { id: uid(), name: '', every: { km: null, months: null }, last: {}, next: {}, createdAt: now() };
+  const body = openSheet(isNew ? 'Nouvel entretien' : 'Modifier', `
+    <div class="k-field"><label>Nom</label><input id="eN" value="${esc(x.name)}"></div>
+    <div class="k-grid2"><div class="k-field"><label>Tous les … km</label><input id="eK" type="number" value="${x.every.km ?? ''}"></div><div class="k-field"><label>Tous les … mois</label><input id="eM" type="number" value="${x.every.months ?? ''}"></div></div>
+    <label class="k-switch">À faire lors de la révision <input type="checkbox" id="eR" ${x.next?.revision ? 'checked' : ''}></label>
+    <div class="k-grid2"><div class="k-field"><label>Prochain à (km)</label><input id="eNK" type="number" value="${x.next?.km ?? ''}"></div><div class="k-field"><label>Prochain le</label><input id="eND" type="date" value="${x.next?.date ?? ''}"></div></div>
+    <div class="k-field"><label>Notes</label><textarea id="eT">${esc(x.notes || '')}</textarea></div>
+    <button class="k-btn block" id="eOk">Enregistrer</button>`);
+  $('#eOk', body).onclick = () => {
+    x.name = $('#eN', body).value.trim(); if (!x.name) return toast('Donne un nom');
+    x.every = { km: parseInt($('#eK', body).value) || null, months: parseInt($('#eM', body).value) || null };
+    x.next = $('#eR', body).checked ? { revision: true } : { km: parseInt($('#eNK', body).value) || null, date: $('#eND', body).value || null };
+    x.notes = $('#eT', body).value.trim(); x.updatedAt = now();
+    const i = D().items.findIndex(y => y.id === x.id); if (i >= 0) D().items[i] = x; else D().items.push(x);
+    store.save(); closeSheet(); render();
+  };
+}
+function openLog(id) {
+  const l = D().logs.find(x => x.id === id); if (!l) return;
+  const body = openSheet(l.label, `<div class="k-card"><b>${frDate(l.date)}</b>${l.km ? ' · ' + l.km.toLocaleString('fr-FR') + ' km' : ''}<div class="k-hint">${esc(l.garage || '')}${l.price ? ' · ' + eur(l.price) : ''}</div>
+    ${l.itemIds?.length ? `<div style="margin-top:8px">${l.itemIds.map(i => D().items.find(x => x.id === i)?.name).filter(Boolean).map(n => `<span class="k-tag" style="margin:2px">${esc(n)}</span>`).join('')}</div>` : ''}${l.notes ? `<p>${esc(l.notes)}</p>` : ''}</div>
+    <button class="k-btn danger block" id="lDel">Supprimer cette intervention</button>`);
+  $('#lDel', body).onclick = () => { if (confirm('Supprimer cette intervention de l\'historique ?')) { D().logs = D().logs.filter(x => x.id !== id); D().tombstones[id] = now(); store.save(); closeSheet(); render(); } };
+}
+function settings() {
+  const s = D().settings;
+  openCommonSettings(`<div class="k-sec acc">Voiture</div><div class="k-grid2"><div class="k-field"><label>Nom</label><input id="gC" value="${esc(s.car || '')}"></div><div class="k-field"><label>Km par an (estimation)</label><input id="gY" type="number" value="${s.kmPerYear || 12000}"></div></div>`,
+    (body, saving) => { if (saving) { s.car = $('#gC', body).value.trim(); s.kmPerYear = parseInt($('#gY', body).value) || 12000; D().settingsAt = now(); store.save(); } });
+}
+addEventListener('k-settings', () => { store.sync(); render(); });
+
+const n = nav([{ id: 'todo', label: 'À faire' }, { id: 'km', label: 'Compteur' }, { id: 'hist', label: 'Historique' }, { id: 'new', label: 'Suivre' }], { active: 'todo', fab: true });
+n.onclick = e => { const b = e.target.closest('button'); if (!b) return;
+  if (b.classList.contains('k-fab')) return doneSheet();
+  const t = b.dataset.tab; if (t === 'km') return kmSheet(); if (t === 'new') return editItem(null);
+  tab = t; $$('[data-tab]', n).forEach(x => x.classList.toggle('on', x === b)); render(); scrollTo(0, 0); };
+render(); store.sync();
+</script>
+</body>
+</html>

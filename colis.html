@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="ui/kit.css">
+<title>Colis</title>
+</head>
+<body>
+<header id="hero"></header>
+<main class="k-wrap" id="main"></main>
+<script type="module">
+import { initApp, publishSummary, hero, DocSync, read, write, esc, $, $$, uid, now, todayISO, isISO, frDate, daysTo, addMonths, eur, norm, openSheet, closeSheet, toast, bubble, openCommonSettings, nav } from './ui/kit.js';
+initApp('colis');
+
+/* ---------- Statuts & transporteurs ---------- */
+const STATUS = { route: 'En route', retirer: 'À récupérer', recu: 'Récupéré' };
+const CARRIERS = [
+  { name: 'UPS', re: /^1Z[0-9A-Z]{16}$/i, url: c => `https://www.ups.com/track?loc=fr_FR&tracknum=${c}` },
+  { name: 'Amazon', re: /^TBA\d{10,14}$/i, url: c => `https://track.amazon.fr/tracking/${c}` },
+  { name: 'Colissimo', re: /^(\d[A-Z]\d{11}|6[A-Z]\d{11}|\d{13}|[A-Z]{2}\d{9}FR)$/i, url: c => `https://www.laposte.fr/outils/suivre-vos-envois?code=${c}` },
+  { name: 'Chronopost', re: /^[A-Z]{2}\d{9}[A-Z]{2}$/i, url: c => `https://www.chronopost.fr/tracking-no-cms/suivi-page?listeNumerosLT=${c}` },
+  { name: 'DPD', re: /^\d{14}$/, url: c => `https://trace.dpd.fr/fr/trace/${c}` },
+  { name: 'GLS', re: /^\d{11,12}$/, url: c => `https://gls-group.com/FR/fr/suivi-colis?match=${c}` },
+  { name: 'DHL', re: /^\d{10}$/, url: c => `https://www.dhl.com/fr-fr/home/suivi.html?tracking-id=${c}` },
+  { name: 'Mondial Relay', re: /^\d{8}$/, url: c => `https://www.mondialrelay.fr/suivi-de-colis/?numeroExpedition=${c}` },
+];
+const carrierOf = code => { const c = String(code || '').replace(/\s/g, ''); if (!c) return null; return CARRIERS.find(x => x.re.test(c)) || { name: 'Suivi universel', url: x => `https://parcelsapp.com/fr/tracking/${x}` }; };
+const trackUrl = code => { const c = String(code || '').replace(/\s/g, ''); const k = carrierOf(c); return k ? k.url(encodeURIComponent(c)) : ''; };
+
+/* ---------- Données de départ (« Colis Tracker ») ---------- */
+// Données de départ : rangées dans le dépôt privé (JSON_COLIS.json), jamais dans ce code public.
+const seed = () => ({ app: 'colis', schema: 1, items: [], tombstones: {}, settings: { relayDays: 10 }, settingsAt: 0, updatedAt: 0 });
+const store = new DocSync({ key: 'colis.data.v1', path: 'JSON_COLIS.json', label: 'Colis', empty: seed, onRemote: () => render() });
+const D = () => store.data;
+if (!read('colis.data.v1')) store.save();
+
+/* ---------- Affichage ---------- */
+let tab = 'cours', q = '';
+const deadlineTxt = x => isISO(x.deadline) ? (daysTo(x.deadline) < 0 ? `délai dépassé (${frDate(x.deadline)})` : `à retirer avant le ${frDate(x.deadline, { day: 'numeric', month: 'short' })}`) : '';
+function row(x) {
+  const late = x.status === 'retirer' && isISO(x.deadline) && daysTo(x.deadline) <= 2;
+  const tag = x.status === 'retirer' ? `<span class="k-tag ${late ? 'bad' : 'warn'}">À récupérer</span>` : x.status === 'route' ? '<span class="k-tag">En route</span>' : '';
+  const sub = [x.shop, x.place, x.status === 'retirer' ? deadlineTxt(x) : (isISO(x.expected) ? 'prévu le ' + frDate(x.expected, { day: 'numeric', month: 'short' }) : x.when)].filter(Boolean).join(' · ');
+  return `<button class="k-row" data-id="${x.id}"><span class="k-dot ${x.status !== 'recu' ? 'full' : ''}" style="${x.status === 'retirer' ? 'border-color:var(--warn);background:var(--warn)' : ''}"></span><span class="k-main"><b>${esc(x.title)}</b><small>${esc(sub)}</small></span>${tag}</button>`;
+}
+function render() {
+  const its = D().items;
+  const route = its.filter(x => x.status === 'route'), ret = its.filter(x => x.status === 'retirer');
+  const month = todayISO().slice(0, 7);
+  const gotMonth = its.filter(x => x.status === 'recu' && (x.gotAt || '').startsWith(month)).length;
+  hero($('#hero'), {
+    app: 'colis', title: 'Colis', sub: '‹ Accueil', subHref: './index.html',
+    actions: store.pill() + `<button class="k-ibtn" id="set" aria-label="Réglages">⚙︎</button>`,
+    rings: [
+      { label: 'En route', value: route.length, on: () => { tab = 'cours'; render(); } },
+      { label: 'À récupérer', value: ret.length, color: ret.length ? '#e08a00' : undefined, on: () => { tab = 'cours'; render(); } },
+      { label: 'Reçus ce mois', value: gotMonth, on: () => { tab = 'recus'; render(); } },
+      { label: 'Au total', value: its.length, on: () => { tab = 'recus'; render(); } },
+    ],
+    after: el => { store.bindPills(el); $('#set', el).onclick = settings; }
+  });
+  const tip = ret.length ? `${ret.length} colis t'attend${ret.length > 1 ? 'ent' : ''} : ${ret.slice(0, 2).map(x => x.title.toLowerCase() + ' (' + x.place + ')').join(', ')}. N'oublie pas de passer !`
+    : route.length ? `${route.length} colis en route. Je guette le facteur.` : 'Aucun colis en attente. Le carton vide est à moi !';
+  const list = (tab === 'cours' ? its.filter(x => x.status !== 'recu') : its.filter(x => x.status === 'recu'))
+    .filter(x => !q || norm([x.title, x.shop, x.place, x.track, x.forWho].join(' ')).includes(norm(q)))
+    .sort((a, b) => tab === 'cours' ? (a.status === 'retirer' ? -1 : 1) - (b.status === 'retirer' ? -1 : 1) || (a.expected || 'z').localeCompare(b.expected || 'z') : (b.gotAt || '').localeCompare(a.gotAt || '') || b.createdAt - a.createdAt);
+  $('#main').innerHTML = bubble(esc(tip)) + `
+    <div class="k-chips"><button class="k-chip ${tab === 'cours' ? 'on' : ''}" data-t="cours">En cours · ${route.length + ret.length}</button><button class="k-chip ${tab === 'recus' ? 'on' : ''}" data-t="recus">Récupérés · ${its.length - route.length - ret.length}</button></div>
+    <label class="k-search">🔎<input id="q" value="${esc(q)}" placeholder="Objet, boutique, lieu, n° de suivi…"></label>
+    ${list.length ? `<div class="k-card flush">${list.map(row).join('')}</div>` : `<div class="k-empty">${tab === 'cours' ? 'Rien en cours. Touche ＋ pour ajouter une commande.' : 'Aucun colis.'}</div>`}`;
+  $$('[data-t]').forEach(b => b.onclick = () => { tab = b.dataset.t; render(); });
+  $$('[data-id]').forEach(b => b.onclick = () => openItem(b.dataset.id));
+  const qi = $('#q'); qi.oninput = () => { q = qi.value; clearTimeout(qi._t); qi._t = setTimeout(() => { const p = qi.selectionStart; render(); const n = $('#q'); n.focus(); n.setSelectionRange(p, p); }, 250); };
+  const urg = [...ret].sort((a, b) => (a.deadline || 'z').localeCompare(b.deadline || 'z'))[0];
+  publishSummary('colis', { line: ret.length || route.length ? `${ret.length ? ret.length + ' à récupérer' : ''}${ret.length && route.length ? ' · ' : ''}${route.length ? route.length + ' en route' : ''}` : 'Aucun colis en attente', alert: ret.some(x => isISO(x.deadline) && daysTo(x.deadline) <= 2),
+    urgent: urg ? { title: 'Récupérer : ' + urg.title, sub: [urg.place, deadlineTxt(urg)].filter(Boolean).join(' · '), date: urg.deadline || '', k: 'Colis à récupérer', late: isISO(urg.deadline) && daysTo(urg.deadline) < 0 } : null });
+}
+
+/* ---------- Fiche colis ---------- */
+function openItem(id) {
+  const x = D().items.find(i => i.id === id); if (!x) return;
+  const k = carrierOf(x.track);
+  const body = openSheet(x.title, `
+    <span class="k-tag ${x.status === 'retirer' ? 'warn' : x.status === 'recu' ? 'ok' : ''}">${STATUS[x.status]}</span>
+    <div class="k-card" style="margin-top:10px">
+      ${x.shop ? `<div class="k-hint">Boutique</div><b>${esc(x.shop)}</b>` : ''}
+      <div class="k-hint" style="margin-top:6px">Livraison / retrait</div><b>${esc(x.place || '—')}</b>
+      ${isISO(x.expected) || x.when ? `<div class="k-hint" style="margin-top:6px">Date</div><b>${isISO(x.expected) ? frDate(x.expected) : esc(x.when)}</b>` : ''}
+      ${x.deadline ? `<div class="k-hint" style="margin-top:6px">Délai de retrait</div><b>${esc(deadlineTxt(x))}</b>` : ''}
+      ${x.track ? `<div class="k-hint" style="margin-top:6px">Suivi ${esc(k?.name || '')}</div><b class="k-num" style="word-break:break-all">${esc(x.track)}</b>` : ''}
+      ${x.price ? `<div class="k-hint" style="margin-top:6px">Prix</div><b>${eur(x.price)}</b>` : ''}
+      ${x.forWho ? `<div class="k-hint" style="margin-top:6px">Pour</div><b>${esc(x.forWho)}</b>` : ''}
+      ${x.gotAt ? `<div class="k-hint" style="margin-top:6px">Récupéré le</div><b>${frDate(x.gotAt)}</b>` : ''}
+      ${x.notes ? `<p>${esc(x.notes)}</p>` : ''}
+    </div>
+    ${x.track ? `<a class="k-btn line block" href="${trackUrl(x.track)}" target="_blank" rel="noopener" style="margin-bottom:8px">🔎 Suivre le colis (${esc(k.name)})</a>` : ''}
+    <div class="k-btns">
+      ${x.status === 'route' ? `<button class="k-btn ghost" id="arrive">📍 Arrivé au relais</button>` : ''}
+      ${x.status !== 'recu' ? `<button class="k-btn" id="got">✔ Récupéré</button>` : `<button class="k-btn ghost" id="reopen">↩︎ Pas encore reçu</button>`}
+    </div>
+    <div class="k-btns" style="margin-top:8px"><button class="k-btn line" id="edit">Modifier</button><button class="k-btn line" id="warranty">🛡️ Garantie → Paperasse</button></div>
+    <button class="k-btn danger block" id="del" style="margin-top:8px">Supprimer</button>`);
+  const set = (patch, msg) => { Object.assign(x, patch, { updatedAt: now() }); store.save(); closeSheet(); render(); toast(msg); };
+  $('#arrive', body) && ($('#arrive', body).onclick = () => set({ status: 'retirer', deadline: x.deadline || addDays(D().settings.relayDays || 10) }, 'À récupérer au relais'));
+  $('#got', body) && ($('#got', body).onclick = () => set({ status: 'recu', gotAt: todayISO() }, 'Colis récupéré ✓'));
+  $('#reopen', body) && ($('#reopen', body).onclick = () => set({ status: 'route', gotAt: '' }, 'Remis en cours'));
+  $('#edit', body).onclick = () => editItem(x);
+  $('#warranty', body).onclick = () => toPaperasse(x);
+  $('#del', body).onclick = () => { if (confirm(`Supprimer « ${x.title} » ?`)) { D().items = D().items.filter(i => i.id !== x.id); D().tombstones[x.id] = now(); store.save(); closeSheet(); render(); } };
+}
+const addDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return todayISO(d); };
+const places = () => [...new Set(['Maison', 'Boîte aux lettres', ...D().items.map(x => x.place)].filter(Boolean))];
+const shops = () => [...new Set(D().items.map(x => x.shop).filter(Boolean))];
+function editItem(x) {
+  const isNew = !x;
+  x = x ? { ...x } : { id: uid(), title: '', shop: '', place: '', expected: '', when: '', track: '', status: 'route', deadline: '', price: '', forWho: '', notes: '', createdAt: now() };
+  const f = (id, l, v, a = '') => `<div class="k-field"><label for="${id}">${l}</label><input id="${id}" value="${esc(v)}" ${a}></div>`;
+  const body = openSheet(isNew ? 'Nouvelle commande' : 'Modifier', `
+    ${f('fT', 'Objet *', x.title)}
+    <div class="k-grid2">${f('fS', 'Boutique / site', x.shop, 'list="dlS"')}${f('fP', 'Livré où ?', x.place, 'list="dlP"')}</div>
+    <datalist id="dlS">${shops().map(s => `<option value="${esc(s)}">`).join('')}</datalist><datalist id="dlP">${places().map(s => `<option value="${esc(s)}">`).join('')}</datalist>
+    <div class="k-field"><label>Statut</label><div class="k-chips" id="fSt">${Object.entries(STATUS).map(([k, l]) => `<button type="button" class="k-chip ${x.status === k ? 'on' : ''}" data-s="${k}">${l}</button>`).join('')}</div></div>
+    <div class="k-grid2">${f('fE', 'Livraison prévue', x.expected, 'type="date"')}${f('fD', 'Retirer avant le', x.deadline, 'type="date"')}</div>
+    ${f('fK', 'N° de suivi', x.track, 'autocapitalize="characters" placeholder="ex. 1Z…, 6A…"')}<p class="k-hint" id="fKc" style="margin:-6px 0 10px"></p>
+    <div class="k-grid2">${f('fPr', 'Prix (€)', x.price, 'inputmode="decimal"')}${f('fW', 'Pour qui (cadeau…)', x.forWho)}</div>
+    <div class="k-field"><label for="fN">Notes</label><textarea id="fN">${esc(x.notes)}</textarea></div>
+    <button class="k-btn block" id="fOk">Enregistrer</button>`);
+  const showC = () => { const v = $('#fK', body).value.trim(); $('#fKc', body).textContent = v ? 'Transporteur détecté : ' + carrierOf(v).name : ''; };
+  $('#fK', body).oninput = showC; showC();
+  $$('[data-s]', body).forEach(b => b.onclick = () => { x.status = b.dataset.s; $$('[data-s]', body).forEach(y => y.classList.toggle('on', y === b)); });
+  $('#fOk', body).onclick = () => {
+    const v = id => $('#' + id, body).value.trim();
+    if (!v('fT')) return toast("Indique l'objet");
+    Object.assign(x, { title: v('fT'), shop: v('fS'), place: v('fP'), expected: v('fE'), deadline: v('fD'), track: v('fK').replace(/\s/g, ''), price: v('fPr').replace(',', '.'), forWho: v('fW'), notes: v('fN'), updatedAt: now() });
+    if (x.status === 'recu' && !x.gotAt) x.gotAt = todayISO();
+    if (x.status === 'retirer' && !x.deadline) x.deadline = addDays(D().settings.relayDays || 10);
+    const i = D().items.findIndex(y => y.id === x.id); if (i >= 0) D().items[i] = x; else D().items.push(x);
+    store.save(); closeSheet(); render(); toast(isNew ? 'Commande ajoutée ✓' : 'Enregistré ✓');
+  };
+}
+/* Crée une fiche « garantie » dans Paperasse (même téléphone ; Paperasse la synchronise à sa prochaine ouverture) */
+function toPaperasse(x) {
+  const pa = read('paperasse.data.v1', null) || { app: 'paperasse', schema: 1, updatedAt: 0, docs: [], tombstones: {} };
+  const date = x.gotAt || todayISO();
+  if (pa.docs.some(d => d.fromColis === x.id)) return toast('Déjà présent dans Paperasse');
+  pa.docs.push({ id: uid(), fromColis: x.id, category: 'garantie', title: 'Garantie ' + x.title, issuer: x.shop || '', docDate: date, amount: x.price || '', dueDate: '', renewal: '', endDate: '', warrantyEnd: addMonths(date, 24), reference: x.track || '', person: '', status: 'fait', action: '', summary: 'Ajouté depuis Colis', text: '', tags: ['colis'], notes: '', files: [], history: [{ at: now(), txt: 'Créé depuis Colis' }], source: 'colis', createdAt: now(), updatedAt: now() });
+  pa.updatedAt = now(); write('paperasse.data.v1', pa);
+  toast('Garantie de 2 ans ajoutée dans Paperasse 🛡️');
+}
+function settings() {
+  openCommonSettings(`<div class="k-sec acc">Colis</div><div class="k-field"><label>Délai de retrait en relais (jours)</label><input id="cR" type="number" value="${D().settings.relayDays || 10}"></div>`,
+    (body, saving) => { if (saving) { D().settings.relayDays = parseInt($('#cR', body).value) || 10; D().settingsAt = now(); store.save(); } });
+}
+addEventListener('k-settings', () => { store.sync(); render(); });
+const n = nav([{ id: 'cours', label: 'En cours' }, { id: 'recus', label: 'Reçus' }], { active: 'cours', fab: true });
+n.onclick = e => { const b = e.target.closest('button'); if (!b) return; if (b.classList.contains('k-fab')) return editItem(null); tab = b.dataset.tab; $$('[data-tab]', n).forEach(x => x.classList.toggle('on', x === b)); render(); };
+render(); store.sync();
+</script>
+</body>
+</html>
