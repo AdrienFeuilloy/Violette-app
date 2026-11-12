@@ -42,8 +42,8 @@ const deadlineTxt = x => isISO(x.deadline) ? (daysTo(x.deadline) < 0 ? `délai d
 function row(x) {
   const late = x.status === 'retirer' && isISO(x.deadline) && daysTo(x.deadline) <= 2;
   const tag = x.status === 'retirer' ? `<span class="k-tag ${late ? 'bad' : 'warn'}">À récupérer</span>` : x.status === 'route' ? '<span class="k-tag">En route</span>' : '';
-  const sub = [x.shop, x.place, x.status === 'retirer' ? deadlineTxt(x) : (isISO(x.expected) ? 'prévu le ' + frDate(x.expected, { day: 'numeric', month: 'short' }) : x.when)].filter(Boolean).join(' · ');
-  return `<button class="k-row" data-id="${x.id}"><span class="k-dot ${x.status !== 'recu' ? 'full' : ''}" style="${x.status === 'retirer' ? 'border-color:var(--warn);background:var(--warn)' : ''}"></span><span class="k-main"><b>${esc(x.title)}</b><small>${esc(sub)}</small></span>${tag}</button>`;
+  const sub = [x.shop, x.place, x.status === 'retirer' ? deadlineTxt(x) : (isISO(x.expected) ? 'prévu le ' + frDate(x.expected, { day: 'numeric', month: 'short' }) : x.expected && x.expected !== 'Commandé' ? 'prévu ' + x.expected : x.when || (x.expected === 'Commandé' ? 'commandé' : ''))].filter(Boolean).join(' · ');
+  return `<button class="k-row" data-id="${x.id}"><span class="k-dot ${x.status !== 'recu' ? 'full' : ''}" style="${x.status === 'retirer' ? 'border-color:var(--warn);background:var(--warn)' : ''}"></span><span class="k-main"><b>${x.source === 'mail' ? '<span title="Ajouté depuis Gmail" style="opacity:.55;font-weight:500">✉︎ </span>' : ''}${esc(x.title)}</b><small>${esc(sub)}</small></span>${tag}</button>`;
 }
 function render() {
   const its = D().items;
