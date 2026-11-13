@@ -475,10 +475,11 @@ const TYPE_DESC = { jeu_video: /video game|jeu vid[ée]o/i, film: /\bfilm|movie/
 const rightKind = (p, type, strict) => { const re = TYPE_DESC[type]; if (!re) return true; if (!p.description) return !strict; return re.test(p.description); };
 const pageImg = p => { const o = p.original?.source || '', small = p.original && Math.max(p.original.width || 0, p.original.height || 0) <= 1600; const u = (small ? o : p.thumbnail?.source) || o || ''; return /logo|\.svg|icon|wordmark|horizontal|banner|screenshot/i.test(u) ? '' : u; }; // image d'origine si elle est raisonnable (les vignettes recalculées sont parfois refusées)
 // Les nombres d'un titre (« Année 2, 2e partie ») doivent se retrouver dans le titre trouvé : sinon c'est un autre tome
-const numsOf = t => new Set((String(t || '').match(/\d+/g) || []).filter(n => n.length < 4).map(n => String(+n)));
-const sameVolume = (ours, theirs) => { const D = numsOf(ours); if (!D.size) return true; const R = numsOf(theirs); return [...D].every(n => R.has(n)); };
-// 2 = mêmes numéros exactement, 1 = nos numéros sont présents (avec d'autres), -1 = autre tome
-const volScore = (ours, theirs) => { if (!sameVolume(ours, theirs)) return -1; const D = numsOf(ours), R = numsOf(theirs); return [...R].every(n => D.has(n)) ? 2 : 1; };
+const numsOf = t => new Set(seqOf(t));
+const seqOf = t => (String(t || '').match(/\d+/g) || []).filter(n => n.length < 4).map(n => String(+n)).sort();
+// Même tome = exactement les mêmes numéros (« Année 1, 1re partie » ≠ « Année 1, 2e partie »)
+const sameVolume = (ours, theirs) => { const a = seqOf(ours); return !a.length || a.join() === seqOf(theirs).join(); };
+const volScore = (ours, theirs) => sameVolume(ours, theirs) ? 2 : -1;
 function isbn13to10(i) { if (!/^978\d{10}$/.test(i)) return ''; const b = i.slice(3, 12); let s = 0; for (let k = 0; k < 9; k++) s += (10 - k) * +b[k]; const c = (11 - s % 11) % 11; return b + (c === 10 ? 'X' : String(c)); }
 
 // L'ISBN donné par l'IA est parfois faux (celui d'un autre livre du même éditeur) : on le vérifie avant de s'en servir.
@@ -507,6 +508,11 @@ async function findIsbnByTitle(c) {
       for (const { vi } of best) { const id = (vi.industryIdentifiers || []).find(x => x.type === 'ISBN_13')?.identifier; if (id) return id; }
     } catch { }
   }
+  try {
+    const docs = (await (await fetch(`https://openlibrary.org/search.json?limit=10&fields=title,subtitle,isbn&q=${encodeURIComponent(c.title)}`)).json()).docs || [];
+    const best = docs.map(d => ({ d, t: `${d.title || ''} ${d.subtitle || ''}` })).map(x => ({ ...x, sc: wordsOf(x.t).filter(w => want.includes(w)).length < Math.min(2, want.length) ? -1 : volScore(c.title, x.t) })).filter(x => x.sc > 0).sort((a, b) => b.sc - a.sc);
+    for (const { d } of best) { const id = (d.isbn || []).find(i => /^97[89]\d{10}$/.test(i)); if (id) return id; }
+  } catch { }
   return '';
 }
 
@@ -550,6 +556,18 @@ async function coverCandidates(c, { max = 1, strict = true } = {}) {
       for (const al of r) { await add((al.artworkUrl100 || '').replace('100x100bb', '1000x1000bb')); if (done()) break; }
     } catch { }
   }
+  // Open Library (recherche par titre) : connaît des éditions que Google Books n'a pas
+  if (book && c.title && !done()) {
+    try {
+      const docs = (await (await fetch(`https://openlibrary.org/search.json?limit=10&fields=title,subtitle,cover_i&q=${encodeURIComponent(c.title)}`)).json()).docs || [];
+      for (const d of docs.map(d => ({ d, sc: volScore(c.title, `${d.title || ''} ${d.subtitle || ''}`) })).sort((a, b) => b.sc - a.sc).map(x => x.d)) {
+        if (!d.cover_i || !titleOk(`${d.title || ''} ${d.subtitle || ''}`)) continue;
+        await add(`https://covers.openlibrary.org/b/id/${d.cover_i}-L.jpg`, 250); if (done()) break;
+      }
+    } catch { }
+  }
+  // Wikipédia ne montre qu'UNE image pour toute une série : en automatique, jamais pour un tome numéroté (sinon 11 tomes = 11 fois la même)
+  if (strict && book && (numsOf(c.title).size || String(c.volume || '').trim())) return out;
   const titles = [...new Set([c.originalTitle && norm(c.originalTitle) !== norm(c.title) ? c.originalTitle : '', c.title].filter(Boolean))]; // titre anglais d'abord
   const langs = /^(film|jeu_video|musique|jeu_societe)$/.test(c.type) ? ['en', 'fr'] : ['fr', 'en'];
   for (const title of titles) {
@@ -577,8 +595,15 @@ async function coverForItem(it) {
   const c = { ...it, type: data.collections.find(x => x.id === it.collectionId)?.type || it.type || 'autre' };
   const u = await findCover(c).catch(() => '');
   if (c._badIsbn) { const b = c._badIsbn, b10 = b.length === 13 ? isbn13to10(b) : b; if (it.cover?.type === 'url' && (it.cover.src.includes(b) || (b10 && it.cover.src.includes(b10)))) it.cover = null; } // couverture d'un autre livre : retirée
-  if (c._foundIsbn) it.isbn = c._foundIsbn; else if (c._badIsbn) it.isbn = '';
-  return { url: u, isbnChanged: !!(c._foundIsbn || c._badIsbn) };
+  const other = o => o.id !== it.id && norm(o.title) !== norm(it.title);
+  const sharedCover = src => data.items.some(o => other(o) && o.cover?.type === 'url' && o.cover.src === src);
+  let url = u, changed = false;
+  if (c._foundIsbn && data.items.some(o => other(o) && cleanCode(o.isbn) === c._foundIsbn)) { c._foundIsbn = ''; url = ''; } // ISBN déjà porté par un autre titre : douteux
+  if (c._foundIsbn) { it.isbn = c._foundIsbn; changed = true; } else if (c._badIsbn) { it.isbn = ''; changed = true; }
+  if (url && sharedCover(url) && /^(livre|bd|manga)$/.test(c.type)) url = ''; // déjà la couverture d'un autre titre
+  const numbered = /^(livre|bd|manga)$/.test(c.type) && (seqOf(it.title).length || String(it.volume || '').trim());
+  if (!url && it.cover?.type === 'url' && (sharedCover(it.cover.src) || (numbered && /wikimedia|wikipedia/.test(it.cover.src)))) { it.cover = null; changed = true; } // même image que d'autres tomes : fausse, Rocket à la place
+  return { url, isbnChanged: changed };
 }
 
 function aiPrompt(multi) {
