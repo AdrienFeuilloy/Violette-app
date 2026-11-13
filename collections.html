@@ -881,7 +881,8 @@ ${spec.slice(spec.indexOf("Collections de l'utilisateur"))}`;
 }
 async function describeAndStructure(b64, multi) {
   const fiches = await kitAI([{ mime: 'image/jpeg', b64 }, describePrompt(multi)], { key: S.aiKey, model: S.aiModel, maxTokens: 12000, json: false, search: true });
-  return parseJsonLoose(await kitAI([structurePrompt(fiches, multi)], { key: S.aiKey, model: S.aiModel, maxTokens: 12000 }));
+  // mise en forme : simple travail de texte, confié au modèle Flash-Lite (quota séparé, plus léger)
+  return parseJsonLoose(await kitAI([structurePrompt(fiches, multi)], { key: S.aiKey, model: 'gemini-flash-lite-latest', maxTokens: 12000 }));
 }
 
 // 2e passage pour une étagère : chaque objet est recadré en pleine définition et relu de près,

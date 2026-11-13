@@ -375,12 +375,16 @@ export async function aiAsk(parts, { key, model, maxTokens = 4000, json = true, 
     generationConfig: { maxOutputTokens: maxTokens + 8192, /* les modèles récents « réfléchissent » sur ce même budget */ ...(json && !useSearch ? { responseMimeType: 'application/json' } : {}) }
   });
   let body = makeBody();
-  let lastErr;
-  for (const m of chain) {
-    for (const pause of [0, 1500, 4000]) {
-      if (pause) await new Promise(r => setTimeout(r, pause));
+  // Économe en quota : un modèle saturé (503) est réessayé 2 fois ; un quota atteint (429) n'est JAMAIS réessayé sur le même modèle.
+  let lastErr, quotaHit = false, sent = 0;
+  for (const m of chain.slice(0, 3)) {
+    let pauses = [0, 1500, 4000];
+    for (let t = 0; t < pauses.length; t++) {
+      if (pauses[t]) await new Promise(r => setTimeout(r, pauses[t]));
+      if (sent >= 6) break; // garde-fou : jamais plus de 6 envois pour une même demande
       let r, j;
       try {
+        sent++;
         r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': key }, body });
         j = await r.json().catch(() => ({}));
       } catch (e) { lastErr = new Error('IA : réseau indisponible'); continue; }
@@ -393,15 +397,23 @@ export async function aiAsk(parts, { key, model, maxTokens = 4000, json = true, 
         continue;
       }
       lastErr = new Error('IA : ' + (msg || 'HTTP ' + r.status));
-      const busy = [429, 500, 502, 503, 504].includes(r.status) || /overload|unavailable|exhausted|try again/i.test(msg);
       if (r.status === 404 || /not found|not supported|no longer available|deprecated|not available|update your code/i.test(msg)) { forgetModel(m); break; } // modèle retiré : on passe au suivant
-      if (useSearch && r.status === 400) { useSearch = false; body = makeBody(); continue; } // recherche Google non permise ici : on s'en passe
+      if (useSearch && (r.status === 400 || r.status === 429)) { useSearch = false; body = makeBody(); pauses = [0]; t = -1; continue; } // recherche Google refusée ou hors quota : on réessaie une fois sans
+      if (r.status === 429 || /quota|exhausted|rate limit/i.test(msg)) {
+        quotaHit = true;
+        const wait = parseFloat((j.error?.details || []).find(d => /RetryInfo/.test(d['@type'] || ''))?.retryDelay) || 0;
+        if (wait > 0 && wait <= 20 && t === 0) { pauses = [0, wait * 1000 + 500]; continue; } // limite par minute : on attend ce que Google indique, une fois
+        break; // quota du jour : on passe au modèle suivant, qui a son propre quota
+      }
+      const busy = [500, 502, 503, 504].includes(r.status) || /overload|unavailable|try again/i.test(msg);
       if (!busy) throw lastErr; // clé invalide, requête refusée… : inutile d'insister
     }
   }
+  if (quotaHit) throw new Error('Quota gratuit de Gemini atteint (par minute ou pour la journée). Réessaie dans une minute ; si ça persiste, c’est le quota du jour : il se réinitialise demain, ou active la facturation sur aistudio.google.com. Suivi : ai.dev/rate-limit');
   const m0 = lastErr?.message || 'IA indisponible';
-  throw new Error(/overload|unavailable|exhausted|503|429|réseau/i.test(m0) ? 'Gemini est saturé en ce moment, réessaie dans quelques minutes.' : m0);
+  throw new Error(/overload|unavailable|503|réseau/i.test(m0) ? 'Gemini est saturé en ce moment, réessaie dans quelques minutes.' : m0);
 }
+
 export const setAI = a => write('hub.ai', { ...(read('hub.ai', {}) || {}), ...a });
 export const ghReady = () => { const g = getGH(); return !!(g.owner && g.repo && g.token); };
 
