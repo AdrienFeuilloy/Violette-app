@@ -445,12 +445,13 @@ function aiPrompt(multi) {
   const colls = data.collections.map(c => `${c.name} (${c.type})`).join(', ') || 'aucune pour le moment';
   const series = [...new Set(data.items.map(i => i.series).filter(Boolean))].slice(0, 120).join(' | ') || 'aucune';
   return `Tu es l'assistant de catalogage d'une application de suivi de collections (livres, BD, mangas, vinyles/CD, films, jeux vidéo, jeux de société, LEGO, figurines…).
-${multi ? "La photo peut contenir PLUSIEURS objets (étagère, pile, tranches…) : liste chaque objet identifiable séparément, de gauche à droite puis de haut en bas." : "Identifie l'objet principal de la photo (un seul objet)."}
+${multi ? `La photo peut contenir PLUSIEURS objets (étagère, pile, tranches…) : liste CHAQUE objet séparément, de gauche à droite puis de haut en bas, même ceux que tu n'identifies pas (titre "" et confidence basse).
+Sur une tranche, le texte est souvent vertical (de haut en bas ou de bas en haut) : tourne-le mentalement. Repère aussi le logo et le nom de l'éditeur ou de la collection (Folio, Pocket, Livre de Poche, Glénat, Kana, Dargaud…), le numéro de tome, le logo de console (PS5, PS4, Switch, Xbox) ou de l'éditeur de jeu, les couleurs et le graphisme typiques d'une série.` : "Identifie l'objet principal de la photo (un seul objet)."}
 Lis attentivement tout le texte visible (couverture, tranche, dos, code-barres, numéro de tome). Utilise tes connaissances pour compléter auteur, éditeur, série et année quand tu reconnais l'œuvre avec certitude. N'invente rien : laisse "" ce que tu ne peux ni lire ni déduire de façon fiable.
 Collections de l'utilisateur : ${colls}.
 Séries déjà présentes (réutilise exactement la même orthographe si c'est la même série) : ${series}.
 Réponds UNIQUEMENT avec un JSON valide, sans aucun texte autour, au format :
-{"items":[{"type":"livre|bd|manga|musique|film|jeu_video|jeu_societe|lego|figurine|autre","collection":"nom exact d'une collection existante adaptée, sinon \\"\\"","title":"titre exact de l'objet","creators":"auteur(s)/artiste(s)/studio, séparés par des virgules","series":"série, saga ou cycle si applicable","volume":"numéro de tome/volume (chiffres) si applicable","publisher":"éditeur / label / studio / marque","year":"année","isbn":"ISBN-13 ou EAN si lisible (chiffres uniquement)","format":"ex. Broché, Relié, Poche, Intégrale, Vinyle 33T, CD, Blu-ray, DVD, PS5, Switch, Boîte…","genre":"genre principal","language":"langue de l'édition","tags":["mots-clés utiles"],"description":"résumé en 1 ou 2 phrases si tu connais l'œuvre, sinon \\"\\"","confidence":0.0,"bbox":[x0,y0,x1,y1]}]}
+{"items":[{"type":"livre|bd|manga|musique|film|jeu_video|jeu_societe|lego|figurine|autre","collection":"nom exact d'une collection existante adaptée, sinon \\"\\"","title":"titre exact de l'objet","creators":"auteur(s)/artiste(s)/studio, séparés par des virgules","series":"série, saga ou cycle si applicable","volume":"numéro de tome/volume (chiffres) si applicable","publisher":"éditeur / label / studio / marque","year":"année","isbn":"ISBN-13 ou EAN si lisible (chiffres uniquement)","format":"ex. Broché, Relié, Poche, Intégrale, Vinyle 33T, CD, Blu-ray, DVD, PS5, Switch, Boîte…","genre":"genre principal","language":"langue de l'édition","tags":["mots-clés utiles"],"description":"résumé en 1 ou 2 phrases si tu connais l'œuvre, sinon \\"\\"","seen":"texte lu tel quel sur l'objet (tranche, couverture), même partiel","confidence":0.0,"bbox":[x0,y0,x1,y1]}]}
 "confidence" est entre 0 et 1. "bbox" = rectangle approximatif de l'objet dans l'image en fractions (0 à 1) de la largeur et de la hauteur, origine en haut à gauche.`;
 }
 const BARCODE_PROMPT = `Lis le ou les codes-barres (EAN-13, ISBN, UPC) visibles sur la photo, chiffre par chiffre (utilise aussi les chiffres imprimés sous les barres). Réponds UNIQUEMENT en JSON : {"codes":["9782..."]}. Si aucun code lisible : {"codes":[]}.`;
@@ -857,6 +858,30 @@ function openAddMenu(preColl) {
 }
 
 /* ---------- Ajout rapide IA ---------- */
+
+// 2e passage pour une étagère : chaque objet est recadré en pleine définition et relu de près,
+// 6 tranches par envoi. Améliore nettement la lecture des tranches de livres, BD et jeux.
+async function closeLook(img, found, k, n) {
+  const withBox = found.filter(c => Array.isArray(c.bbox) && c.bbox.length === 4);
+  for (let i = 0; i < withBox.length; i += 6) {
+    const batch = withBox.slice(i, i + 6);
+    $('#aiStep').textContent = `Photo ${k + 1}/${n} : lecture de près ${Math.min(i + 6, withBox.length)}/${withBox.length}…`;
+    const crops = await Promise.all(batch.map(async c => blobToB64(await canvasToBlob(drawScaled(img, 1400, c.bbox), 0.92))));
+    const prompt = `Voici ${batch.length} images numérotées de 1 à ${batch.length}, dans l'ordre. Chacune montre UN seul objet recadré dans une photo d'étagère : le plus souvent sa tranche (texte vertical à tourner mentalement), parfois sa couverture.
+Pour chaque image, lis tout le texte visible et identifie l'objet avec tes connaissances (titre exact, auteur, série, tome, éditeur, plateforme). Indices du premier passage, à corriger s'ils sont faux :
+${batch.map((c, j) => `${j + 1}. ${[c.title, c.creators, c.series && c.series + (c.volume ? ' T' + c.volume : ''), c.seen && 'texte lu : « ' + c.seen + ' »'].filter(Boolean).join(' · ') || 'non identifié'}`).join('\n')}
+${aiPrompt(false).split('Réponds UNIQUEMENT')[1] ? 'Réponds UNIQUEMENT' + aiPrompt(false).split('Réponds UNIQUEMENT')[1].replace('{"items":[{', '{"items":[{"i":numéro de l\'image,') : ''}`;
+    try {
+      const r = await kitAI([...crops.map(b => ({ mime: 'image/jpeg', b64: b })), prompt], { key: S.aiKey, model: S.aiModel, maxTokens: 6000 });
+      const j = parseJsonLoose(r);
+      for (const x of j.items || []) {
+        const c = batch[(+x.i || 0) - 1]; if (!c) continue;
+        if ((x.confidence ?? 0) + 0.05 < (c.confidence ?? 0) || !x.title) continue; // on garde le 1er passage s'il était plus sûr
+        for (const key of ['type', 'title', 'creators', 'series', 'volume', 'publisher', 'year', 'isbn', 'format', 'genre', 'language', 'description', 'seen', 'confidence']) if (x[key] !== undefined && x[key] !== '') c[key] = x[key];
+      }
+    } catch (e) { console.warn('Lecture de près impossible', e); } // le 1er passage reste valable
+  }
+}
 async function runAI(files, multi, opts) {
   if (!S.aiKey) { toast("Ajoute d'abord ta clé Gemini"); openSettings(); return; }
   const body = openSheet('Analyse IA', `<div id="aiPrev"></div><div class="spinner"></div><p class="hint" style="text-align:center" id="aiStep">Préparation de la photo…</p>`);
@@ -864,13 +889,16 @@ async function runAI(files, multi, opts) {
   try {
     for (let k = 0; k < files.length; k++) {
       const img = await fileToImage(files[k]);
-      const full = await canvasToBlob(drawScaled(img, 1568), 0.85);
+      const isMulti0 = multi === null ? true : multi;
+      const full = await canvasToBlob(drawScaled(img, isMulti0 ? 3072 : 1568), isMulti0 ? 0.9 : 0.85); // étagère : haute définition pour lire les tranches
       const prevU = URL.createObjectURL(full);
       $('#aiPrev').innerHTML = `<img class="preview-img" src="${prevU}" alt="">`;
       $('#aiStep').textContent = `Analyse de la photo ${k + 1}/${files.length}…`;
       const isMulti = multi === null ? true : multi; // galerie 1 photo : l'IA détecte seule
       const r = await askClaude([await blobToB64(full)], aiPrompt(isMulti));
-      for (const x of (r.items || []).slice(0, isMulti ? 40 : 1)) cands.push({ ...x, _img: img, _uid: uid() });
+      const found = (r.items || []).slice(0, isMulti ? 40 : 1).map(x => ({ ...x, _img: img, _uid: uid() }));
+      if (isMulti && found.length > 1) await closeLook(img, found, k, files.length);
+      cands.push(...found);
     }
     if (!cands.length) { body.innerHTML = `<div class="empty"><div class="big">🤔</div><p>Aucun objet reconnu. Essaie avec une photo plus nette, de face, bien éclairée.</p></div>`; return; }
     $('#aiStep').textContent = `Recherche des couvertures et compléments…`;
@@ -881,6 +909,9 @@ async function runAI(files, multi, opts) {
       if (code && isBookCode(code)) {
         const r = await lookupISBN(code).catch(() => null);
         if (r) { for (const k of ['title', 'creators', 'publisher', 'year', 'description', 'genre', 'subtitle']) if (!c[k] && r[k]) c[k] = r[k]; c._online = r.cover || ''; }
+      }
+      if (!c.title && c.seen && /^(livre|bd|manga|)$/.test(c.type || '')) {
+        try { const j = await (await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(c.seen.slice(0, 120))}&maxResults=1`)).json(); const v = j.items?.[0]?.volumeInfo; if (v?.title) { c.title = v.title; c.creators ||= (v.authors || []).join(', '); c.publisher ||= v.publisher || ''; c.year ||= (v.publishedDate || '').slice(0, 4); c.type ||= 'livre'; c.confidence = Math.min(c.confidence ?? 0.4, 0.5); } } catch {}
       }
       if (!c._online && /^(livre|bd|manga)$/.test(c.type) && c.title) {
         try { const q = encodeURIComponent(`intitle:${c.title}${c.creators ? ' inauthor:' + c.creators.split(',')[0] : ''}`); const j = await (await fetch(`https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=1`)).json(); const il = j.items?.[0]?.volumeInfo?.imageLinks; if (il) c._online = (il.thumbnail || il.smallThumbnail).replace('http:', 'https:').replace('&edge=curl', ''); } catch {}
@@ -922,6 +953,7 @@ function renderReview(cands) {
         <span>${[c.publisher, c.year, c.format, c.isbn].filter(Boolean).map(esc).join(' · ')}</span>
         <span style="display:flex;gap:6px;align-items:center">${typeof c.confidence === 'number' ? `<span class="conf">${Math.round(c.confidence * 100)} %</span>` : ''}<label style="display:flex;gap:4px;align-items:center"><input type="checkbox" data-on ${c._on ? 'checked' : ''}> garder</label></span>
       </div>
+      ${(c.confidence ?? 1) < 0.6 && c.seen ? `<div class="hint" style="margin-top:6px">Pas sûr. Texte lu sur l'objet : « ${esc(c.seen)} » — corrige le titre si besoin, ou décoche-le.</div>` : ''}
       ${dup ? `<div class="warn">⚠︎ Déjà dans ta collection : « ${esc(dup.title)} »</div>` : ''}
     </div>`;
   }).join('');
