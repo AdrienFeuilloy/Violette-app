@@ -362,15 +362,19 @@ export function parseJsonLoose(t) {
   try { return JSON.parse(s); } catch (e) { throw new Error('Réponse IA illisible, réessaie (' + e.message.slice(0, 60) + ')'); }
 }
 // parts : chaînes de texte ou { mime, b64 } (images JPEG/PNG, PDF). Renvoie le texte de la réponse.
-export async function aiAsk(parts, { key, model, maxTokens = 4000, json = true } = {}) {
+// search : autorise Gemini à chercher sur Google (comme dans l'appli Gemini) ; abandonné si le modèle ne le permet pas
+export async function aiAsk(parts, { key, model, maxTokens = 4000, json = true, search = false } = {}) {
   const ai = getAI(); key = isGeminiKey(key) ? key : ai.key; model = isGeminiModel(model) ? model : ai.model;
   if (!key) throw new Error('Ajoute ta clé Gemini dans les réglages (⚙︎)');
   // Gemini est parfois saturé (« model overloaded », erreurs 503/429) : on réessaie, puis on bascule sur un autre modèle
   const chain = await modelChain(key, model);
-  const body = JSON.stringify({
+  let useSearch = search;
+  const makeBody = () => JSON.stringify({
     contents: [{ role: 'user', parts: parts.map(p => typeof p === 'string' ? { text: p } : { inline_data: { mime_type: p.mime, data: p.b64 } }) }],
-    generationConfig: { maxOutputTokens: maxTokens + 8192, /* les modèles récents « réfléchissent » sur ce même budget */ ...(json ? { responseMimeType: 'application/json' } : {}) }
+    ...(useSearch ? { tools: [{ google_search: {} }] } : {}),
+    generationConfig: { maxOutputTokens: maxTokens + 8192, /* les modèles récents « réfléchissent » sur ce même budget */ ...(json && !useSearch ? { responseMimeType: 'application/json' } : {}) }
   });
+  let body = makeBody();
   let lastErr;
   for (const m of chain) {
     for (const pause of [0, 1500, 4000]) {
@@ -391,6 +395,7 @@ export async function aiAsk(parts, { key, model, maxTokens = 4000, json = true }
       lastErr = new Error('IA : ' + (msg || 'HTTP ' + r.status));
       const busy = [429, 500, 502, 503, 504].includes(r.status) || /overload|unavailable|exhausted|try again/i.test(msg);
       if (r.status === 404 || /not found|not supported|no longer available|deprecated|not available|update your code/i.test(msg)) { forgetModel(m); break; } // modèle retiré : on passe au suivant
+      if (useSearch && r.status === 400) { useSearch = false; body = makeBody(); continue; } // recherche Google non permise ici : on s'en passe
       if (!busy) throw lastErr; // clé invalide, requête refusée… : inutile d'insister
     }
   }

@@ -859,6 +859,31 @@ function openAddMenu(preColl) {
 
 /* ---------- Ajout rapide IA ---------- */
 
+// Étape 1 : Gemini décrit librement chaque objet, comme dans l'appli Gemini (réflexion + recherche Google).
+function describePrompt(multi) {
+  return `Tu catalogues une collection personnelle (livres, BD, comics, mangas, vinyles/CD, films, jeux vidéo, jeux de société, LEGO, figurines…).
+${multi ? `Liste TOUS les objets visibles sur la photo, de gauche à droite puis de haut en bas, même partiellement visibles. Une série dont plusieurs tomes sont visibles = une fiche PAR tome (ex. « Injustice Année 1 – 1re partie », « Année 1 – 2e partie »…).` : `Identifie l'objet principal de la photo.`}
+Lis tout le texte visible : tranches (texte souvent vertical, à tourner mentalement), couvertures, logos d'éditeur, de collection ou de console, numéros de tome. Puis utilise tes connaissances, et la recherche Google si tu y as accès, pour faire une vraie fiche bibliographique de chaque objet : titre exact, sous-titre, auteur(s) avec leur rôle, éditeur et collection, série et numéro de tome, date de parution (édition française si c'est elle), format, ISBN si tu le connais, genre, résumé en 2 phrases.
+Pour chaque objet, termine sa fiche par trois lignes :
+Position : x0,y0,x1,y1 (rectangle de l'objet dans la photo, en fractions de 0 à 1, origine en haut à gauche)
+Certitude : sûr, probable ou incertain
+Texte lu : le texte réellement visible sur l'objet`;
+}
+// Étape 2 : les fiches sont converties en JSON pour l'appli (texte seul, rapide).
+function structurePrompt(fiches, multi) {
+  const spec = aiPrompt(multi);
+  return `Voici des fiches d'objets rédigées à partir d'une photo de collection :
+-----
+${fiches.slice(0, 30000)}
+-----
+Convertis CHAQUE fiche en un objet du JSON demandé ci-dessous, sans en ajouter ni en retirer, en gardant les informations des fiches. "confidence" : sûr = 0.9, probable = 0.65, incertain = 0.35. "bbox" = la Position de la fiche. "seen" = le Texte lu.
+${spec.slice(spec.indexOf("Collections de l'utilisateur"))}`;
+}
+async function describeAndStructure(b64, multi) {
+  const fiches = await kitAI([{ mime: 'image/jpeg', b64 }, describePrompt(multi)], { key: S.aiKey, model: S.aiModel, maxTokens: 12000, json: false, search: true });
+  return parseJsonLoose(await kitAI([structurePrompt(fiches, multi)], { key: S.aiKey, model: S.aiModel, maxTokens: 12000 }));
+}
+
 // 2e passage pour une étagère : chaque objet est recadré en pleine définition et relu de près,
 // 6 tranches par envoi. Améliore nettement la lecture des tranches de livres, BD et jeux.
 async function closeLook(img, found, k, n) {
@@ -895,9 +920,11 @@ async function runAI(files, multi, opts) {
       $('#aiPrev').innerHTML = `<img class="preview-img" src="${prevU}" alt="">`;
       $('#aiStep').textContent = `Analyse de la photo ${k + 1}/${files.length}…`;
       const isMulti = multi === null ? true : multi; // galerie 1 photo : l'IA détecte seule
-      const r = await askClaude([await blobToB64(full)], aiPrompt(isMulti));
+      $('#aiStep').textContent = `Photo ${k + 1}/${files.length} : Gemini identifie les objets…`;
+      const r = await describeAndStructure(await blobToB64(full), isMulti);
       const found = (r.items || []).slice(0, isMulti ? 40 : 1).map(x => ({ ...x, _img: img, _uid: uid() }));
-      if (isMulti && found.length > 1) await closeLook(img, found, k, files.length);
+      const unsure = found.filter(c => !c.title || (c.confidence ?? 0) < 0.5);
+      if (isMulti && unsure.length) await closeLook(img, unsure, k, files.length); // relecture de près des seuls objets incertains
       cands.push(...found);
     }
     if (!cands.length) { body.innerHTML = `<div class="empty"><div class="big">🤔</div><p>Aucun objet reconnu. Essaie avec une photo plus nette, de face, bien éclairée.</p></div>`; return; }
@@ -910,7 +937,7 @@ async function runAI(files, multi, opts) {
         const r = await lookupISBN(code).catch(() => null);
         if (r) { for (const k of ['title', 'creators', 'publisher', 'year', 'description', 'genre', 'subtitle']) if (!c[k] && r[k]) c[k] = r[k]; c._online = r.cover || ''; }
       }
-      if (!c.title && c.seen && /^(livre|bd|manga|)$/.test(c.type || '')) {
+      if (!c.title && c.seen && (c.seen.match(/[A-Za-zÀ-ÿ]{3,}/g) || []).length >= 2 && /^(livre|bd|manga|)$/.test(c.type || '')) { // assez de mots lus pour une recherche fiable
         try { const j = await (await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(c.seen.slice(0, 120))}&maxResults=1`)).json(); const v = j.items?.[0]?.volumeInfo; if (v?.title) { c.title = v.title; c.creators ||= (v.authors || []).join(', '); c.publisher ||= v.publisher || ''; c.year ||= (v.publishedDate || '').slice(0, 4); c.type ||= 'livre'; c.confidence = Math.min(c.confidence ?? 0.4, 0.5); } } catch {}
       }
       if (!c._online && /^(livre|bd|manga)$/.test(c.type) && c.title) {
