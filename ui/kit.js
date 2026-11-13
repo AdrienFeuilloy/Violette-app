@@ -89,8 +89,11 @@ export function pushHubPrefs() {
   d.data.settingsAt = now(); d.save();
 }
 import { hasTour, startTour, tourCSS } from './tour.js';
+export const APP_VERSION = '2.6.1';
 export function initApp(appId) {
   CURRENT_APP = appId;
+  // Service worker commun à toutes les pages, vérifié à chaque ouverture (les mises à jour arrivent sans attendre)
+  if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register('./sw.js').then(r => r.update()).catch(() => {});
   setTimeout(() => addFooter(appId), 60);
   setTimeout(() => hubSync().sync(), 600);
   const app = appById(appId);
@@ -563,7 +566,7 @@ function addFooter(appId) {
   if (document.querySelector('.k-foot')) return;
   const f = document.createElement('div'); f.className = 'k-foot';
   if (hasTour(appId)) { tourCSS(); f.innerHTML += `<button type="button" data-foot="tour">✦ Visite guidée</button><span aria-hidden="true">·</span>`; }
-  f.innerHTML += `<button type="button" data-foot="fb">✎ Remarque${openNotes(appId) ? ` <b>${openNotes(appId)}</b>` : ''}</button>`;
+  f.innerHTML += `<button type="button" data-foot="fb">✎ Remarque${openNotes(appId) ? ` <b>${openNotes(appId)}</b>` : ''}</button><span aria-hidden="true">·</span><span title="Version de l'appli">v${APP_VERSION}</span>`;
   f.onclick = e => { const b = e.target.closest('[data-foot]'); if (!b) return; b.dataset.foot === 'tour' ? startTour(appId) : openFeedback(appId); };
   const nav = document.querySelector('.k-nav, nav.bottom, nav.bottom-nav');
   document.body.insertBefore(f, nav && nav.parentElement === document.body ? nav : null);
