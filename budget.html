@@ -43,7 +43,7 @@
 <header id="hero"></header>
 <main class="k-wrap" id="main"></main>
 <script type="module">
-import { initApp, publishSummary, hero, DocSync, read, write, esc, $, $$, uid, now, todayISO, isISO, frDate, daysTo, eur, norm, openSheet, closeSheet, toast, bubble, openCommonSettings, nav, sound, getAI, aiAsk, download, pickFiles } from './ui/kit.js';
+import { initApp, publishSummary, hero, DocSync, read, write, esc, $, $$, uid, now, todayISO, isISO, frDate, daysTo, eur, norm, openSheet, closeSheet, toast, bubble, openCommonSettings, nav, sound, getAI, aiAsk, parseJsonLoose, download, pickFiles } from './ui/kit.js';
 import { Passerelle, empreinte } from './passerelle-budget.js';
 initApp('budget');
 
@@ -122,7 +122,7 @@ async function aiClassify() {
   const body = openSheet('Classement par l’IA', `<div class="k-spin"></div><p class="k-hint" style="text-align:center">${labels.length} libellés envoyés à Gemini, sans montant ni numéro…</p>`);
   try {
     const txt = await aiAsk([`Tu classes des libellés de relevé bancaire français (montants et numéros retirés volontairement).\nCatégories autorisées : ${cats().join(', ')}.\nTags : Inévitable (dépense nécessaire), Évitable (dépense de confort), Non applicable (revenus, virements internes).\nRéponds UNIQUEMENT en JSON : {"items":[{"i":numéro de la ligne,"category":"…","tag":"…"}]}. Si tu ne sais pas, category "Divers".\nLibellés :\n${labels.map((l, i) => (i + 1) + '. ' + l).join('\n')}`], { maxTokens: 8000 });
-    const j = JSON.parse(txt.slice(txt.indexOf('{'), txt.lastIndexOf('}') + 1));
+    const j = parseJsonLoose(txt);
     let n = 0;
     for (const x of j.items || []) {
       const lab = labels[(+x.i || 0) - 1]; if (!lab || !cats().includes(x.category) || ![...TAGS].includes(x.tag)) continue;

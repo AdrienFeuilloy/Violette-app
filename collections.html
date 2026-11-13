@@ -178,7 +178,7 @@ main{position:relative;z-index:1}
 <div id="toast" class="toast"></div>
 
 <script type="module">
-import { initApp as kitInit, hero as kitHero, aiAsk as kitAI, AI_MODELS, AI_DEFAULT, logoutDevice as kitLogout } from './ui/kit.js';
+import { initApp as kitInit, hero as kitHero, aiAsk as kitAI, AI_MODELS, AI_DEFAULT, logoutDevice as kitLogout, parseJsonLoose as kitParse } from './ui/kit.js';
 kitInit('collections');
 
 /* =========================================================
@@ -437,7 +437,7 @@ async function lookupISBN(raw) {
 }
 
 /* ---------- IA (Gemini, appel direct depuis le navigateur) ---------- */
-function parseJsonLoose(t) { t = String(t).replace(/```json|```/g, ''); const a = t.indexOf('{'), b = t.lastIndexOf('}'); if (a < 0 || b < a) throw new Error("Réponse IA illisible"); return JSON.parse(t.slice(a, b + 1)); }
+const parseJsonLoose = kitParse;
 async function askClaude(imagesB64, prompt, maxTokens = 4000) {
   return parseJsonLoose(await kitAI([...imagesB64.map(d => ({ mime: 'image/jpeg', b64: d })), prompt], { key: S.aiKey, model: S.aiModel, maxTokens }));
 }

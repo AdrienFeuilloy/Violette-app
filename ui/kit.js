@@ -316,15 +316,60 @@ export function getAI() {
   const ai = read('hub.ai', {}) || {};
   return { key: isGeminiKey(ai.key) ? ai.key : '', model: isGeminiModel(ai.model) ? ai.model : AI_DEFAULT };
 }
+
+// Liste des modèles Gemini réellement ouverts à cette clé (Google en retire régulièrement) : demandée à Google, gardée 24 h.
+const MODELS_KEY = 'hub.ai.models';
+async function availableModels(key) {
+  const c = read(MODELS_KEY, null);
+  if (c && c.k === key.slice(-6) && Date.now() - c.at < 864e5) return c.list;
+  try {
+    const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', { headers: { 'x-goog-api-key': key } });
+    if (!r.ok) return null;
+    const j = await r.json();
+    const list = (j.models || []).filter(m => (m.supportedGenerationMethods || []).includes('generateContent')).map(m => m.name.replace(/^models\//, ''));
+    write(MODELS_KEY, { at: Date.now(), k: key.slice(-6), list });
+    return list;
+  } catch { return null; }
+}
+function forgetModel(m) { const c = read(MODELS_KEY, null); if (c) write(MODELS_KEY, { ...c, list: c.list.filter(x => x !== m) }); }
+const ver = m => parseFloat((m.match(/^gemini-(\d+(?:\.\d+)?)/) || [])[1] || 0);
+async function modelChain(key, wanted) {
+  const list = await availableModels(key);
+  if (!list) return [...new Set([wanted, 'gemini-flash-latest', 'gemini-flash-lite-latest', 'gemini-pro-latest'])];
+  const stable = kind => list.filter(m => new RegExp(`^gemini-\\d+(?:\\.\\d+)?-${kind}$`).test(m)).sort((a, b) => ver(b) - ver(a));
+  const flash = stable('flash'), lite = stable('flash-lite'), pro = stable('pro');
+  const kind = /lite/.test(wanted) ? 'lite' : /pro/.test(wanted) ? 'pro' : 'flash';
+  const order = kind === 'pro' ? [pro[0], flash[0], lite[0]] : kind === 'lite' ? [lite[0], flash[0], lite[1]] : [flash[0], lite[0], flash[1], pro[0]];
+  return [...new Set([list.includes(wanted) ? wanted : null, ...order].filter(Boolean))].slice(0, 4);
+}
+// Lit le premier objet JSON complet d'une réponse d'IA, même entouré de texte, de ``` ou suivi d'un second bloc.
+export function parseJsonLoose(t) {
+  t = String(t || '').replace(/```(?:json)?/gi, '');
+  const start = t.search(/[{[]/);
+  if (start < 0) throw new Error('Réponse IA illisible');
+  const stack = []; let inStr = false, esc2 = false, end = -1;
+  for (let i = start; i < t.length; i++) {
+    const c = t[i];
+    if (inStr) { if (esc2) esc2 = false; else if (c === '\\') esc2 = true; else if (c === '"') inStr = false; continue; }
+    if (c === '"') inStr = true;
+    else if (c === '{' || c === '[') stack.push(c === '{' ? '}' : ']');
+    else if (c === '}' || c === ']') { stack.pop(); if (!stack.length) { end = i; break; } }
+  }
+  let s = end > 0 ? t.slice(start, end + 1) : t.slice(start);
+  try { return JSON.parse(s); } catch { }
+  if (end < 0) s = (inStr ? s + '"' : s).replace(/,\s*$/, '') + stack.reverse().join(''); // réponse coupée en route
+  s = s.replace(/,\s*([}\]])/g, '$1'); // virgules en trop
+  try { return JSON.parse(s); } catch (e) { throw new Error('Réponse IA illisible, réessaie (' + e.message.slice(0, 60) + ')'); }
+}
 // parts : chaînes de texte ou { mime, b64 } (images JPEG/PNG, PDF). Renvoie le texte de la réponse.
 export async function aiAsk(parts, { key, model, maxTokens = 4000, json = true } = {}) {
   const ai = getAI(); key = isGeminiKey(key) ? key : ai.key; model = isGeminiModel(model) ? model : ai.model;
   if (!key) throw new Error('Ajoute ta clé Gemini dans les réglages (⚙︎)');
   // Gemini est parfois saturé (« model overloaded », erreurs 503/429) : on réessaie, puis on bascule sur un autre modèle
-  const chain = [...new Set([model, 'gemini-2.5-flash', 'gemini-flash-lite-latest', 'gemini-2.5-flash-lite'])];
+  const chain = await modelChain(key, model);
   const body = JSON.stringify({
     contents: [{ role: 'user', parts: parts.map(p => typeof p === 'string' ? { text: p } : { inline_data: { mime_type: p.mime, data: p.b64 } }) }],
-    generationConfig: { maxOutputTokens: maxTokens, ...(json ? { responseMimeType: 'application/json' } : {}) }
+    generationConfig: { maxOutputTokens: maxTokens + 8192, /* les modèles récents « réfléchissent » sur ce même budget */ ...(json ? { responseMimeType: 'application/json' } : {}) }
   });
   let lastErr;
   for (const m of chain) {
@@ -345,11 +390,12 @@ export async function aiAsk(parts, { key, model, maxTokens = 4000, json = true }
       }
       lastErr = new Error('IA : ' + (msg || 'HTTP ' + r.status));
       const busy = [429, 500, 502, 503, 504].includes(r.status) || /overload|unavailable|exhausted|try again/i.test(msg);
-      if (r.status === 404 || /not found|not supported/i.test(msg)) break; // modèle indisponible : on passe au suivant
+      if (r.status === 404 || /not found|not supported|no longer available|deprecated|not available|update your code/i.test(msg)) { forgetModel(m); break; } // modèle retiré : on passe au suivant
       if (!busy) throw lastErr; // clé invalide, requête refusée… : inutile d'insister
     }
   }
-  throw new Error((lastErr?.message || 'IA indisponible') + ' — Gemini est saturé en ce moment, réessaie dans quelques minutes.');
+  const m0 = lastErr?.message || 'IA indisponible';
+  throw new Error(/overload|unavailable|exhausted|503|429|réseau/i.test(m0) ? 'Gemini est saturé en ce moment, réessaie dans quelques minutes.' : m0);
 }
 export const setAI = a => write('hub.ai', { ...(read('hub.ai', {}) || {}), ...a });
 export const ghReady = () => { const g = getGH(); return !!(g.owner && g.repo && g.token); };
