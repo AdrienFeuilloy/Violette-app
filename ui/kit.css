@@ -28,7 +28,7 @@ a{color:var(--acc)}
 /* ---------- Hero : paysage + bande + ronds + coulures ---------- */
 .k-hero{position:relative;z-index:0}
 .k-hero>svg{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
-.k-hero .k-head{position:absolute;left:18px;right:18px;top:calc(22px + var(--safe-t));display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.k-hero .k-head{position:absolute;left:max(18px,calc((100% - 1280px)/2));right:max(18px,calc((100% - 1280px)/2));top:calc(22px + var(--safe-t));display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
 .k-hero .k-titles{color:var(--ink);min-width:0}
 html[data-theme="dark"] .k-hero .k-titles{color:#f6f1e7}
 .k-hero .k-sub{font-size:11px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;opacity:.75}
@@ -141,3 +141,6 @@ html[data-theme="dark"] .k-cat{filter:drop-shadow(0 0 1px rgba(241,237,228,.9)) 
 .k-foot:hover,.k-foot:focus-within{opacity:1}
 .k-foot button{border:0;background:none;color:inherit;font:inherit;padding:6px 6px;cursor:pointer;letter-spacing:.02em}
 .k-foot b{display:inline-grid;place-items:center;min-width:16px;height:16px;border-radius:8px;background:var(--acc);color:#fff;font-size:10px;padding:0 4px;margin-left:2px}
+
+/* Grand écran : contenu des applis plus large */
+@media (min-width:1200px){.k-wrap{max-width:980px}}

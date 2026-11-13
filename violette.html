@@ -151,9 +151,24 @@ body:has(.modal.active){overflow:hidden}
 @media (min-width:640px){.modal{align-items:center}.modal-box{border-radius:16px;max-height:86dvh}}
 @media (min-width:900px){
   .main{max-width:1040px}
+  .controls{grid-template-columns:2fr 1fr 1fr 1fr}.controls .full{grid-column:auto}
   #tab-summary.active{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start}
   #tab-summary .card{margin-bottom:0}
+  #monthAlert{grid-column:1/-1}#monthAlert:empty{display:none}
   .bottom-nav{justify-content:center;gap:8px}.nav-item{max-width:180px}
+}
+/* Grand écran (remarque du 12/11) : on exploite la largeur */
+@media (min-width:1200px){
+  .main{max-width:1320px;padding:20px 28px}
+  #tab-summary.active{grid-template-columns:repeat(auto-fit,minmax(380px,1fr))}
+  #tab-menus .card{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:0 22px;align-items:start}
+  #tab-menus .menu-tools,#tab-menus .meal-toggles,#tab-menus .card>p{grid-column:1/-1}
+  #overview{position:sticky;top:14px}
+  #planner{display:grid;grid-template-columns:1fr;gap:8px;align-content:start}
+}
+@media (min-width:1600px){
+  #tab-menus .card{grid-template-columns:minmax(0,1fr) minmax(0,1.3fr)}
+  #planner{grid-template-columns:1fr 1fr}
 }
 
 .pill.alert{position:relative}.pill.alert::after{content:"";position:absolute;top:-2px;right:-2px;width:9px;height:9px;border-radius:50%;background:var(--bad)}
@@ -452,7 +467,9 @@ const $ = id => document.getElementById(id);
 const BIRTH = new Date(2026, 2, 17);
 const CATS = ["Légume", "Féculent", "Protéine", "Fruit"];
 const CAT_ICONS = { "Légume": "🥦", "Fruit": "🍎", "Féculent": "🥔", "Protéine": "🥩" };
-const DAYS = [["monday","Lundi"],["tuesday","Mardi"],["wednesday","Mercredi"],["thursday","Jeudi"],["friday","Vendredi"],["saturday","Samedi"],["sunday","Dimanche"]];
+// La semaine des menus commence le samedi (remarque du 12/11)
+const DAYS = [["saturday","Samedi"],["sunday","Dimanche"],["monday","Lundi"],["tuesday","Mardi"],["wednesday","Mercredi"],["thursday","Jeudi"],["friday","Vendredi"]];
+const dayIdx = (d = new Date()) => (d.getDay() + 1) % 7; // samedi = 0
 const SLOTS = { breakfast: "P'tit déj", lunch: "Déjeuner", snack: "Goûter", dinner: "Dîner" };
 const SLOT_CATS = { breakfast: ["Fruit"], lunch: ["Légume","Féculent","Protéine"], snack: ["Fruit"], dinner: ["Légume","Féculent","Protéine"] };
 const MONTHS_FULL = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
@@ -1281,7 +1298,7 @@ function weekCounts() {
   return m;
 }
 function weekDates() {
-  const t = new Date(), mon = new Date(t.getFullYear(), t.getMonth(), t.getDate() - ((t.getDay() + 6) % 7));
+  const t = new Date(), mon = new Date(t.getFullYear(), t.getMonth(), t.getDate() - dayIdx(t)); // premier jour = samedi
   return DAYS.map((_, i) => { const x = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + i); return `${x.getFullYear()}-${pad(x.getMonth() + 1)}-${pad(x.getDate())}`; });
 }
 
@@ -1337,7 +1354,7 @@ function renderItemRow(d, slot, idx, entry) {
   if (compl) line = `➕ Complément : ${esc(noteAt(famOf(s), getBabyAgeMonths()) || "1 cc")} (frise)`;
   else if (!mi.need) line = `Stock : ${stockTxt(s)}`;
   else if (mi.stockG < mi.need) line = `Stock : ${stockTxt(s)} | <span class="cook">🍳 À cuisiner : ${fmtG(mi.cook, mi.unit)}</span>`;
-  else if (mi.forced) line = `Stock : ${stockTxt(s)} | <span class="cook">🍳 À cuisiner frais : ${fmtG(mi.cook, mi.unit)}</span>`;
+  else if (mi.forced) line = `Stock : ${stockTxt(s)} | <span class="cook">🍳 À cuisiner frais : ${fmtG(mi.cook, mi.unit)}</span> <span class="muted">(${n <= lowThr() ? `stock bas : ${potsTxt(n)} pour un seuil de ${lowThr()}, on en refait` : 'le plat frais du jour'})</span>`;
   else line = `Stock total : ${potsTxt(n)} · portion ${potsTxt(item.qtyPots)}`;
 
   return `<div class="mi">
@@ -1375,7 +1392,7 @@ function renderAlts(d, slot) {
   return blocks ? `<details class="alts" ${openAlts.has(key) ? "open" : ""} ontoggle="toggleAlt('${key}',this.open)"><summary>Autres propositions</summary>${blocks}<p class="muted" style="margin-top:6px">Toucher un aliment le remplace dans sa catégorie, « + » l'ajoute en mélange.</p></details>` : "";
 }
 
-let openDays = new Set([DAYS[(new Date().getDay() + 6) % 7][0]]);
+let openDays = new Set([DAYS[dayIdx()][0]]);
 window.toggleDay = (d, o) => { o ? openDays.add(d) : openDays.delete(d); };
 window.openDay = function(d) {
   openDays.add(d);
@@ -1398,7 +1415,7 @@ window.renderMenus = function() {
   const planner = $("planner"), ov = $("overview");
   if (!planner || !ov) return;
   const slots = ALL_SLOTS.filter(k => visibleSlots().includes(k));
-  const todayIdx = (new Date().getDay() + 6) % 7;
+  const todayIdx = dayIdx();
   const mt = $("mealToggles");
   if (mt) mt.innerHTML = `<span class="lbl">Repas affichés :</span>${ALL_SLOTS.map(k => `<button class="mt-btn" aria-pressed="${slots.includes(k)}" onclick="toggleMealSlot('${k}')">${SLOTS[k]}</button>`).join("")}`;
   DAYS.forEach(([d]) => { if (!plans[d]) plans[d] = { breakfast: [], lunch: [], snack: [], dinner: [], fresh: [] }; });

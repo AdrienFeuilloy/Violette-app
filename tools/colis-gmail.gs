@@ -7,6 +7,7 @@
  *
  * - Tes mails restent chez Google : rien n'est envoyé ailleurs qu'à ton dépôt GitHub privé.
  * - Aucune IA : la lecture se fait avec des règles simples.
+ * - Seuls les mails dont l'OBJET parle de commande, colis, expédition ou livraison sont ouverts.
  * - Pas de doublon : un même numéro de commande ou de suivi met à jour la ligne existante.
  *
  * Mise en place : voir le tuto. En bref :
@@ -66,7 +67,10 @@ function verifierMails() {
 
 /* ===================== Lecture des mails ===================== */
 
+// Confidentialité : seul l'objet est regardé d'abord. Le contenu d'un mail n'est lu QUE si son objet contient un de ces mots.
 const SUJETS = ['commande', 'commandé', 'expédié', 'expédiée', 'expédition', 'colis', 'livraison', 'livré', 'livrée', '"point relais"', 'retrait', 'order', 'shipped', 'delivered', 'shipment', 'envoi', 'achat'];
+
+const SUJET_OK = /commande|command[ée]|exp[ée]di|exp[ée]dition|colis|livraison|livr[ée]|point relais|retrait|\border\b|shipped|delivered|shipment|envoi|achat/i;
 
 function lireMails_(since, seen) {
   // une heure de marge, Gmail arrondit les dates de recherche
@@ -76,7 +80,9 @@ function lireMails_(since, seen) {
     const id = m.getId();
     if (seen.has(id) || m.getDate().getTime() < since - 3600e3) return;
     seen.add(id);
-    const r = analyser({ subject: m.getSubject(), from: m.getFrom(), body: m.getPlainBody(), date: m.getDate() });
+    const subject = m.getSubject();
+    if (!SUJET_OK.test(subject)) return; // objet sans rapport avec une commande : le mail n'est pas ouvert
+    const r = analyser({ subject, from: m.getFrom(), body: m.getPlainBody(), date: m.getDate() });
     if (r) out.push(r);
   }));
   return out.sort((a, b) => a.at - b.at);

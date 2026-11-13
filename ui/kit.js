@@ -179,7 +179,7 @@ export function hero(el, opts) {
   const dark = document.documentElement.dataset.theme === 'dark';
   const band = bandColor(app, dark);
   const draw = () => {
-    const W = Math.max(300, Math.min(el.clientWidth || innerWidth, 1400));
+    const W = Math.max(300, el.clientWidth || innerWidth);
     const rings = opts.rings || [];
     const per = Math.min(opts.perRow || 5, Math.max(1, rings.length));
     const rows = rings.length ? Math.ceil(rings.length / per) : 0;
@@ -320,18 +320,36 @@ export function getAI() {
 export async function aiAsk(parts, { key, model, maxTokens = 4000, json = true } = {}) {
   const ai = getAI(); key = isGeminiKey(key) ? key : ai.key; model = isGeminiModel(model) ? model : ai.model;
   if (!key) throw new Error('Ajoute ta clé Gemini dans les réglages (⚙︎)');
-  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
-    method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
-    body: JSON.stringify({
-      contents: [{ role: 'user', parts: parts.map(p => typeof p === 'string' ? { text: p } : { inline_data: { mime_type: p.mime, data: p.b64 } }) }],
-      generationConfig: { maxOutputTokens: maxTokens, ...(json ? { responseMimeType: 'application/json' } : {}) }
-    })
+  // Gemini est parfois saturé (« model overloaded », erreurs 503/429) : on réessaie, puis on bascule sur un autre modèle
+  const chain = [...new Set([model, 'gemini-2.5-flash', 'gemini-flash-lite-latest', 'gemini-2.5-flash-lite'])];
+  const body = JSON.stringify({
+    contents: [{ role: 'user', parts: parts.map(p => typeof p === 'string' ? { text: p } : { inline_data: { mime_type: p.mime, data: p.b64 } }) }],
+    generationConfig: { maxOutputTokens: maxTokens, ...(json ? { responseMimeType: 'application/json' } : {}) }
   });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error('IA : ' + (j.error?.message || 'HTTP ' + r.status));
-  const txt = (j.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('');
-  if (!txt) throw new Error('IA : réponse vide' + (j.promptFeedback?.blockReason ? ' (' + j.promptFeedback.blockReason + ')' : ''));
-  return txt;
+  let lastErr;
+  for (const m of chain) {
+    for (const pause of [0, 1500, 4000]) {
+      if (pause) await new Promise(r => setTimeout(r, pause));
+      let r, j;
+      try {
+        r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': key }, body });
+        j = await r.json().catch(() => ({}));
+      } catch (e) { lastErr = new Error('IA : réseau indisponible'); continue; }
+      const msg = j.error?.message || '';
+      if (r.ok) {
+        const txt = (j.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('');
+        if (txt) return txt;
+        lastErr = new Error('IA : réponse vide' + (j.promptFeedback?.blockReason ? ' (' + j.promptFeedback.blockReason + ')' : ''));
+        if (j.promptFeedback?.blockReason) throw lastErr;
+        continue;
+      }
+      lastErr = new Error('IA : ' + (msg || 'HTTP ' + r.status));
+      const busy = [429, 500, 502, 503, 504].includes(r.status) || /overload|unavailable|exhausted|try again/i.test(msg);
+      if (r.status === 404 || /not found|not supported/i.test(msg)) break; // modèle indisponible : on passe au suivant
+      if (!busy) throw lastErr; // clé invalide, requête refusée… : inutile d'insister
+    }
+  }
+  throw new Error((lastErr?.message || 'IA indisponible') + ' — Gemini est saturé en ce moment, réessaie dans quelques minutes.');
 }
 export const setAI = a => write('hub.ai', { ...(read('hub.ai', {}) || {}), ...a });
 export const ghReady = () => { const g = getGH(); return !!(g.owner && g.repo && g.token); };
