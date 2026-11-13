@@ -51,7 +51,18 @@ h2.sec{font-size:15px;margin:22px 2px 10px;color:var(--muted);font-weight:600;te
 .row-scroll::-webkit-scrollbar{display:none}
 .row-scroll .it{width:104px;flex:none}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(108px,1fr));gap:12px}
-.it{cursor:pointer;min-width:0}
+.it{cursor:pointer;min-width:0;position:relative}
+/* Sélection multiple */
+.selmode .it,.selmode .li{transition:transform .12s}
+.selmode [data-open]::after{content:'';position:absolute;top:6px;left:6px;width:22px;height:22px;border-radius:11px;border:2px solid #fff;background:rgba(0,0,0,.25);box-shadow:0 1px 4px rgba(0,0,0,.3)}
+.selmode .li{position:relative}
+#items.selmode{padding-bottom:170px}
+.selmode [data-open].picked::after{background:var(--acc);border-color:#fff;content:'✓';color:#fff;font:700 13px/18px Inter,sans-serif;text-align:center}
+.selmode [data-open].picked .cover{outline:3px solid var(--acc);outline-offset:2px}
+.selbar{position:fixed;left:10px;right:10px;bottom:calc(84px + var(--safe-b,0px));z-index:40;background:var(--card);color:var(--ink);border-radius:18px;box-shadow:0 10px 30px rgba(0,0,0,.25);padding:10px 12px;display:flex;flex-direction:column;gap:8px;max-width:680px;margin:0 auto}
+.selbar .row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.selbar b{flex:1;font-size:14px}
+.selbar .btn{padding:7px 10px;font-size:12.5px}
 .cover{position:relative;aspect-ratio:2/3;border-radius:10px;overflow:hidden;background:var(--violet-soft);box-shadow:var(--shadow);display:grid;place-items:center}
 .cover img{width:100%;height:100%;object-fit:cover;display:block}
 .cover .ph{display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px;text-align:center;font-size:11px;color:#fff;width:100%;height:100%;justify-content:center}
@@ -640,6 +651,7 @@ function filterItems(list) {
 const view = $('#view');
 function route() { return location.hash.replace(/^#\/?/, '').split('/'); }
 function render() {
+  $('#selbar')?.remove(); // la barre de sélection n'existe que dans les listes d'objets
   const [r, arg] = route();
   $$('.bottom [data-nav]').forEach(b => b.classList.toggle('on', b.dataset.nav === '#/' + (r || '') || (r === 'c' && b.dataset.nav === '#/all')));
   if (r === 'c' && getColl(arg)) renderList(arg);
@@ -688,6 +700,107 @@ function renderHome() {
   hydrateCovers(view);
 }
 
+/* ---------- Sélection multiple et modifications en lot ---------- */
+let selMode = false; const sel = new Set();
+function bindSelection(root, list, redraw) {
+  root.querySelectorAll('[data-open]').forEach(el => el.classList.toggle('picked', sel.has(el.dataset.open)));
+  let timer = null, longDone = false;
+  // appui long sur un objet : passe en mode sélection
+  root.addEventListener('pointerdown', e => { const el = e.target.closest('[data-open]'); if (!el || selMode) return; longDone = false; timer = setTimeout(() => { longDone = true; selMode = true; sel.add(el.dataset.open); navigator.vibrate?.(15); redraw(); }, 480); });
+  ['pointerup', 'pointerleave', 'pointercancel', 'scroll'].forEach(ev => root.addEventListener(ev, () => clearTimeout(timer), { passive: true }));
+  root.addEventListener('click', e => {
+    const el = e.target.closest('[data-open]'); if (!el) return;
+    if (longDone) { longDone = false; return; }
+    if (!selMode) return openDetail(el.dataset.open);
+    const id = el.dataset.open; sel.has(id) ? sel.delete(id) : sel.add(id); el.classList.toggle('picked', sel.has(id)); drawSelBar(list, redraw);
+  });
+  drawSelBar(list, redraw);
+}
+function drawSelBar(list, redraw) {
+  let bar = $('#selbar');
+  if (!selMode) { bar?.remove(); return; }
+  if (!bar) { bar = document.createElement('div'); bar.id = 'selbar'; bar.className = 'selbar'; document.body.appendChild(bar); }
+  const n = sel.size;
+  bar.innerHTML = `<div class="row"><b>${n} sélectionné${n > 1 ? 's' : ''}</b><button class="btn ghost sm" data-s="all">${n === list.length ? 'Aucun' : 'Tout'}</button><button class="btn ghost sm" data-s="close">✕</button></div>
+    <div class="row"><button class="btn sm" data-s="edit" ${n ? '' : 'disabled'}>✎ Modifier</button><button class="btn ghost sm" data-s="images" ${n ? '' : 'disabled'}>🌐 Images auto</button><button class="btn ghost sm" data-s="ai" ${n ? '' : 'disabled'}>✨ Compléter (IA)</button><button class="btn ghost sm" data-s="del" style="color:#ff4f5e" ${n ? '' : 'disabled'}>🗑</button></div>`;
+  bar.onclick = async e => {
+    const a = e.target.closest('[data-s]')?.dataset.s; if (!a) return;
+    const items = data.items.filter(i => sel.has(i.id));
+    if (a === 'all') { if (sel.size === list.length) sel.clear(); else list.forEach(i => sel.add(i.id)); redraw(); }
+    else if (a === 'close') { selMode = false; sel.clear(); bar.remove(); redraw(); }
+    else if (a === 'edit') batchEdit(items, redraw);
+    else if (a === 'images') batchImages(items, redraw);
+    else if (a === 'ai') batchComplete(items, redraw);
+    else if (a === 'del') { if (!confirm(`Supprimer ${items.length} objet(s) ? C'est définitif.`)) return; items.forEach(i => deleteItem(i.id)); sel.clear(); toast(`${items.length} objet(s) supprimé(s)`); redraw(); }
+  };
+}
+// Modifier en lot : seuls les champs remplis sont appliqués, les autres ne bougent pas
+function batchEdit(items, redraw) {
+  const keep = '— ne pas changer —';
+  openSheet(`Modifier ${items.length} objet${items.length > 1 ? 's' : ''}`, `
+    <p class="hint" style="margin-top:0">Seuls les champs que tu remplis sont appliqués à tous les objets sélectionnés.</p>
+    <div class="field"><label>Collection</label><select id="bColl"><option value="">${keep}</option>${collOptions('', { allowNew: true })}</select></div>
+    <div class="cols"><div class="field"><label>Statut</label><select id="bStatus"><option value="">${keep}</option>${Object.entries(STATUS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select></div>
+    <div class="field"><label>Format</label><input id="bFormat" placeholder="${keep}"></div></div>
+    <div class="cols"><div class="field"><label>Série</label><input id="bSeries" list="dlSeries" placeholder="${keep}"></div>
+    <div class="field"><label>Éditeur / studio</label><input id="bPublisher" placeholder="${keep}"></div></div>
+    <div class="cols"><div class="field"><label>Emplacement</label><input id="bLocation" placeholder="${keep}"></div>
+    <div class="field"><label>Ajouter des tags</label><input id="bTags" placeholder="ex. switch, à revendre"></div></div>
+    <label class="field" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="bNumber"> Numéroter les tomes dans l'ordre de la sélection (1, 2, 3…)</label>
+    <button class="btn block" id="bApply">Appliquer</button>`);
+  $('#bApply').onclick = () => {
+    let coll = $('#bColl').value; if (coll.startsWith('new:')) coll = newCollection(coll.slice(4)).id;
+    const v = id => $(id).value.trim(), tags = v('#bTags').split(',').map(t => t.trim()).filter(Boolean);
+    const ordered = [...sel].map(id => items.find(i => i.id === id)).filter(Boolean);
+    ordered.forEach((it, k) => {
+      if (coll) it.collectionId = coll;
+      if (v('#bStatus')) it.status = v('#bStatus');
+      for (const [f, id] of [['format', '#bFormat'], ['series', '#bSeries'], ['publisher', '#bPublisher'], ['location', '#bLocation']]) if (v(id)) it[f] = v(id);
+      if (tags.length) it.tags = [...new Set([...(it.tags || []), ...tags])];
+      if ($('#bNumber').checked) it.volume = String(k + 1);
+    });
+    upsertItems(ordered); closeSheet(); toast(`${ordered.length} objet(s) modifié(s)`); redraw();
+  };
+}
+// Images en lot : recherche stricte (bon tome, bonne édition), on garde l'image actuelle si rien de sûr
+async function batchImages(items, redraw) {
+  const body = openSheet('Images automatiques', `<div class="spinner"></div><p class="hint" style="text-align:center" id="bMsg">…</p>`);
+  let found = 0; const changed = [];
+  for (let k = 0; k < items.length; k++) {
+    if ($('#bMsg')) $('#bMsg').textContent = `Recherche ${k + 1}/${items.length} · ${found} trouvée(s)`;
+    const it = items[k], ty = data.collections.find(c => c.id === it.collectionId)?.type || 'autre';
+    const u = await findCover({ ...it, type: ty }).catch(() => '');
+    if (u && u !== it.cover?.src) { it.cover = { type: 'url', src: u }; changed.push(it); found++; }
+  }
+  if (changed.length) upsertItems(changed);
+  closeSheet(); toast(`${found} image(s) trouvée(s) sur ${items.length}`); redraw();
+}
+// Compléter en lot avec Gemini : une seule demande pour 25 objets (économe en quota), puis recherche des images
+async function batchComplete(items, redraw) {
+  if (!S.aiKey) { toast("Ajoute d'abord ta clé Gemini"); return openSettings(); }
+  const body = openSheet('Compléter avec l’IA', `<div class="spinner"></div><p class="hint" style="text-align:center" id="bMsg">…</p>`);
+  const FIELDS2 = ['creators', 'originalTitle', 'series', 'volume', 'publisher', 'year', 'isbn', 'format', 'genre', 'language', 'description'];
+  let filled = 0;
+  try {
+    for (let k = 0; k < items.length; k += 25) {
+      const part = items.slice(k, k + 25);
+      $('#bMsg').textContent = `Gemini complète ${Math.min(k + 25, items.length)}/${items.length}…`;
+      const known = part.map((it, i) => `${i + 1}. ${JSON.stringify(Object.fromEntries(['title', ...FIELDS2].filter(f => it[f]).map(f => [f, String(it[f]).slice(0, 120)])))} (type : ${data.collections.find(c => c.id === it.collectionId)?.type || 'autre'})`).join('\n');
+      const prompt = `Voici des objets d'une collection personnelle, numérotés. Complète les champs MANQUANTS de chacun avec des informations exactes (édition française si c'est elle) : ${FIELDS2.join(', ')}. N'invente rien : laisse "" si tu n'es pas sûr, en particulier pour l'ISBN.
+${known}
+Réponds UNIQUEMENT en JSON : {"items":[{"i":1,"creators":"","originalTitle":"","series":"","volume":"","publisher":"","year":"","isbn":"","format":"","genre":"","language":"","description":""}]}`;
+      const r = parseJsonLoose(await kitAI([prompt], { key: S.aiKey, model: S.aiModel, maxTokens: 12000, json: false, search: true }));
+      for (const x of r.items || []) {
+        const it = part[(+x.i || 0) - 1]; if (!it) continue;
+        for (const f of FIELDS2) if (!it[f] && x[f] && String(x[f]).trim()) { it[f] = String(x[f]).trim(); filled++; }
+      }
+      upsertItems(part);
+    }
+  } catch (e) { toast(e.message); }
+  closeSheet(); toast(`${filled} information(s) ajoutée(s)`);
+  if (items.some(i => !i.cover)) batchImages(items.filter(i => !i.cover), redraw); else redraw();
+}
+
 function renderList(collId) {
   const c = collId ? getColl(collId) : null;
   $('#title').textContent = c ? `${c.icon || collType(c).icon} ${c.name}` : 'Tous les objets';
@@ -700,10 +813,11 @@ function renderList(collId) {
     <div class="toolbar">
       <select id="sort">${Object.entries({ recent: 'Ajout récent', title: 'Titre', creator: 'Auteur / artiste', series: 'Série & tome', year: 'Année', rating: 'Note' }).map(([k, v]) => `<option value="${k}" ${ui.sort === k ? 'selected' : ''}>Tri : ${v}</option>`).join('')}</select>
       <div class="seg"><button data-v="grid" class="${ui.view === 'grid' ? 'on' : ''}">▦</button><button data-v="list" class="${ui.view === 'list' ? 'on' : ''}">☰</button></div>
+      <button class="btn ghost sm" id="selToggle" title="Sélectionner plusieurs objets">${selMode ? 'Terminer' : '☑︎ Sélection'}</button>
       ${c ? `<button class="btn ghost sm" id="editColl">⋯</button>` : ''}
     </div>
     <div class="count">${list.length} objet${list.length > 1 ? 's' : ''}${list.length !== base.length ? ` sur ${base.length}` : ''}</div>
-    <div id="items" class="${ui.view === 'grid' ? 'grid' : 'list'}">${list.map(ui.view === 'grid' ? itemCard : itemRow).join('')}</div>
+    <div id="items" class="${ui.view === 'grid' ? 'grid' : 'list'}${selMode ? ' selmode' : ''}">${list.map(ui.view === 'grid' ? itemCard : itemRow).join('')}</div>
     ${!base.length ? `<div class="empty"><div class="big">${c ? c.icon || collType(c).icon : '📚'}</div><p>Rien ici pour l'instant.</p><button class="btn" id="emptyAdd">＋ Ajouter un objet</button></div>` : ''}`;
   let qt; $('#q').addEventListener('input', e => { clearTimeout(qt); qt = setTimeout(() => { ui.q = e.target.value; saveUI(); const pos = e.target.selectionStart; renderList(collId); const q = $('#q'); q.focus(); q.setSelectionRange(pos, pos); }, 250); });
   $('#clearQ').onclick = e => { e.preventDefault(); ui.q = ''; saveUI(); renderList(collId); };
@@ -712,7 +826,8 @@ function renderList(collId) {
   $('#sort').onchange = e => { ui.sort = e.target.value; saveUI(); renderList(collId); };
   if ($('#editColl')) $('#editColl').onclick = () => openCollectionForm(c);
   if ($('#emptyAdd')) $('#emptyAdd').onclick = () => openAddMenu(collId);
-  bindOpen($('#items'));
+  bindSelection($('#items'), list, () => renderList(collId));
+  $('#selToggle').onclick = () => { selMode = !selMode; if (!selMode) sel.clear(); renderList(collId); };
   hydrateCovers(view);
 }
 
