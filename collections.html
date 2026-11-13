@@ -477,7 +477,38 @@ const pageImg = p => { const o = p.original?.source || '', small = p.original &&
 // Les nombres d'un titre (« Année 2, 2e partie ») doivent se retrouver dans le titre trouvé : sinon c'est un autre tome
 const numsOf = t => new Set((String(t || '').match(/\d+/g) || []).filter(n => n.length < 4).map(n => String(+n)));
 const sameVolume = (ours, theirs) => { const D = numsOf(ours); if (!D.size) return true; const R = numsOf(theirs); return [...D].every(n => R.has(n)); };
+// 2 = mêmes numéros exactement, 1 = nos numéros sont présents (avec d'autres), -1 = autre tome
+const volScore = (ours, theirs) => { if (!sameVolume(ours, theirs)) return -1; const D = numsOf(ours), R = numsOf(theirs); return [...R].every(n => D.has(n)) ? 2 : 1; };
 function isbn13to10(i) { if (!/^978\d{10}$/.test(i)) return ''; const b = i.slice(3, 12); let s = 0; for (let k = 0; k < 9; k++) s += (10 - k) * +b[k]; const c = (11 - s % 11) % 11; return b + (c === 10 ? 'X' : String(c)); }
+
+// L'ISBN donné par l'IA est parfois faux (celui d'un autre livre du même éditeur) : on le vérifie avant de s'en servir.
+// Renvoie true (le titre correspond), false (c'est un autre livre) ou null (inconnu des bases).
+const isbnCache = {};
+async function isbnTitle(isbn) {
+  if (isbn in isbnCache) return isbnCache[isbn];
+  let t = null;
+  try { const it = ((await (await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}&maxResults=1`)).json()).items || [])[0]?.volumeInfo; if (it?.title) t = `${it.title} ${it.subtitle || ''}`; } catch { }
+  if (!t) try { const r = await fetch(`https://openlibrary.org/isbn/${isbn}.json`); if (r.ok) { const j = await r.json(); if (j.title) t = `${j.title} ${j.subtitle || ''}`; } } catch { }
+  return (isbnCache[isbn] = t);
+}
+async function verifyIsbn(isbn, c) {
+  const t = await isbnTitle(isbn); if (!t) return null;
+  const want = wordsOf(c.title), shared = wordsOf(t).filter(w => want.includes(w) || wordsOf(c.series || '').includes(w)).length;
+  return shared >= Math.min(2, want.length) && sameVolume(c.title, t) ? true : shared >= 1 && !numsOf(t).size ? null : false;
+}
+// Sans ISBN fiable : on cherche le bon tome dans Google Books et on prend SON ISBN (puis la couverture de cette édition)
+async function findIsbnByTitle(c) {
+  const want = wordsOf(c.title), first = (c.creators || '').split(',')[0].trim();
+  for (const q of [...new Set([`intitle:${c.title}${first ? ' inauthor:' + first : ''}`, c.series && `${c.series} ${c.volume || ''} ${c.publisher || ''}`.trim(), `${c.title} ${c.publisher || ''}`.trim()].filter(Boolean))]) {
+    try {
+      const best = ((await (await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=10`)).json()).items || [])
+        .map(v => { const vi = v.volumeInfo || {}, t = `${vi.title || ''} ${vi.subtitle || ''}`; return { vi, t, score: wordsOf(t).filter(w => want.includes(w)).length < Math.min(2, want.length) ? -1 : volScore(c.title, t) }; })
+        .filter(x => x.score > 0).sort((a, b) => b.score - a.score); // le tome exact avant ceux qui contiennent seulement nos numéros
+      for (const { vi } of best) { const id = (vi.industryIdentifiers || []).find(x => x.type === 'ISBN_13')?.identifier; if (id) return id; }
+    } catch { }
+  }
+  return '';
+}
 
 // Toutes les sources, dans l'ordre du plus fiable au moins sûr. strict : une seule image pour l'import ;
 // sinon jusqu'à « max » images pour le sélecteur de la fiche (contrôles un peu plus souples).
@@ -485,9 +516,12 @@ async function coverCandidates(c, { max = 1, strict = true } = {}) {
   const out = [], seen = new Set();
   const add = async (u, min = 200) => { if (!u || seen.has(u) || out.length >= max) return; seen.add(u); if (await imgOK(u, min)) out.push(u); };
   const done = () => out.length >= max;
-  const book = /^(livre|bd|manga)$/.test(c.type || ''), isbn = cleanCode(c.isbn), want = wordsOf(c.title);
+  const book = /^(livre|bd|manga)$/.test(c.type || ''), want = wordsOf(c.title);
+  let isbn = cleanCode(c.isbn), verified = false;
+  if (book && isbn && isBookCode(isbn)) { const v = await verifyIsbn(isbn, c); if (v === false) { c._badIsbn = isbn; isbn = ''; } else verified = v === true; }
+  if (book && (!isbn || !verified) && c.title) { const f = await findIsbnByTitle(c); if (f) { isbn = f; verified = true; if (cleanCode(c.isbn) !== f) c._foundIsbn = f; } }
   const titleOk = t => { const shared = wordsOf(t).filter(w => want.includes(w)).length; return shared >= (strict ? Math.min(2, want.length) : 1) && (!strict || sameVolume(c.title, t)); };
-  if (book && isbn && isBookCode(isbn)) {
+  if (book && isbn && isBookCode(isbn) && (verified || !strict)) { // un ISBN non vérifié ne sert qu'au sélecteur
     const i13 = isbn.length === 10 ? isbn10to13(isbn) : isbn, i10 = isbn.length === 10 ? isbn : isbn13to10(i13);
     if (i10) await add(`https://images-na.ssl-images-amazon.com/images/P/${i10}.01.LZZZZZZZ.jpg`, 250); // couverture de CETTE édition (souvent la française)
     if (!done()) await add(`https://covers.openlibrary.org/b/isbn/${i13}-L.jpg?default=false`, 250);
@@ -498,7 +532,8 @@ async function coverCandidates(c, { max = 1, strict = true } = {}) {
     for (const q of queries) {
       if (done()) break;
       try {
-        const items = (await (await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=${strict ? 5 : 10}`)).json()).items || [];
+        const items = ((await (await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=${strict ? 5 : 10}`)).json()).items || [])
+          .map(v => ({ v, sc: volScore(c.title, `${v.volumeInfo?.title || ''} ${v.volumeInfo?.subtitle || ''}`) })).sort((a, b) => b.sc - a.sc).map(x => x.v);
         for (const v of items) {
           const vi = v.volumeInfo || {}, t = (vi.title || '') + ' ' + (vi.subtitle || '');
           if (!q.startsWith('isbn:') && !titleOk(t)) continue; // pas le même livre ou pas le même tome
@@ -537,6 +572,14 @@ async function coverCandidates(c, { max = 1, strict = true } = {}) {
   return out;
 }
 const findCover = async c => (await coverCandidates(c, { max: 1, strict: true }))[0] || '';
+// Cherche l'image d'un objet enregistré et corrige son ISBN au passage (faux → retiré, retrouvé → enregistré)
+async function coverForItem(it) {
+  const c = { ...it, type: data.collections.find(x => x.id === it.collectionId)?.type || it.type || 'autre' };
+  const u = await findCover(c).catch(() => '');
+  if (c._badIsbn) { const b = c._badIsbn, b10 = b.length === 13 ? isbn13to10(b) : b; if (it.cover?.type === 'url' && (it.cover.src.includes(b) || (b10 && it.cover.src.includes(b10)))) it.cover = null; } // couverture d'un autre livre : retirée
+  if (c._foundIsbn) it.isbn = c._foundIsbn; else if (c._badIsbn) it.isbn = '';
+  return { url: u, isbnChanged: !!(c._foundIsbn || c._badIsbn) };
+}
 
 function aiPrompt(multi) {
   const colls = data.collections.map(c => `${c.name} (${c.type})`).join(', ') || 'aucune pour le moment';
@@ -608,8 +651,7 @@ const healed = new Set();
 async function healCover(it, badUrl, el) {
   if (!it || it.cover?.type !== 'url' || healed.has(it.id) || !it.title) return;
   healed.add(it.id);
-  const ty = data.collections.find(c => c.id === it.collectionId)?.type || 'autre';
-  const u = await findCover({ ...it, type: ty }).catch(() => '');
+  const { url: u } = await coverForItem(it);
   if (!u || u === badUrl) return;
   it.cover = { type: 'url', src: u }; upsertItem(it);
   const img = new Image(); img.alt = ''; img.referrerPolicy = 'no-referrer';
@@ -768,9 +810,9 @@ async function batchImages(items, redraw) {
   let found = 0; const changed = [];
   for (let k = 0; k < items.length; k++) {
     if ($('#bMsg')) $('#bMsg').textContent = `Recherche ${k + 1}/${items.length} · ${found} trouvée(s)`;
-    const it = items[k], ty = data.collections.find(c => c.id === it.collectionId)?.type || 'autre';
-    const u = await findCover({ ...it, type: ty }).catch(() => '');
-    if (u && u !== it.cover?.src) { it.cover = { type: 'url', src: u }; changed.push(it); found++; }
+    const it = items[k], { url: u, isbnChanged } = await coverForItem(it);
+    if (u && u !== it.cover?.src) { it.cover = { type: 'url', src: u }; found++; }
+    if ((u && it.cover?.src === u) || isbnChanged) changed.push(it);
   }
   if (changed.length) upsertItems(changed);
   closeSheet(); toast(`${found} image(s) trouvée(s) sur ${items.length}`); redraw();
@@ -1222,7 +1264,7 @@ async function runAI(files, multi, opts) {
       if (!c.title && c.seen && (c.seen.match(/[A-Za-zÀ-ÿ]{3,}/g) || []).length >= 2 && /^(livre|bd|manga|)$/.test(c.type || '')) { // assez de mots lus pour une recherche fiable
         try { const j = await (await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(c.seen.slice(0, 120))}&maxResults=1`)).json(); const v = j.items?.[0]?.volumeInfo; if (v?.title) { c.title = v.title; c.creators ||= (v.authors || []).join(', '); c.publisher ||= v.publisher || ''; c.year ||= (v.publishedDate || '').slice(0, 4); c.type ||= 'livre'; c.confidence = Math.min(c.confidence ?? 0.4, 0.5); } } catch {}
       }
-      if (c.title) { $('#aiStep').textContent = 'Recherche de belles images…'; const u = await findCover(c).catch(() => ''); if (u) c._online = u; }
+      if (c.title) { $('#aiStep').textContent = 'Recherche de belles images…'; const u = await findCover(c).catch(() => ''); if (u) c._online = u; if (c._foundIsbn) c.isbn = c._foundIsbn; else if (c._badIsbn) c.isbn = ''; }
       const multiPhoto = cands.filter(o => o._img === c._img).length > 1;
       c._crop = multiPhoto && Array.isArray(c.bbox) && c.bbox.length === 4;
       c._photoBlob = await canvasToBlob(drawScaled(c._img, 900, c._crop ? c.bbox : null), 0.8);
@@ -1479,9 +1521,9 @@ function openSettings() {
     b.disabled = true; let found = 0; const changed = [];
     for (let k = 0; k < todo.length; k++) {
       b.textContent = `Recherche ${k + 1}/${todo.length}… (${found} trouvée${found > 1 ? 's' : ''})`;
-      const it = todo[k], ty = data.collections.find(c => c.id === it.collectionId)?.type || 'autre';
-      const u = await findCover({ ...it, type: ty }).catch(() => '');
-      if (u && u !== it.cover?.src) { it.cover = { type: 'url', src: u }; changed.push(it); found++; }
+      const it = todo[k], { url: u, isbnChanged } = await coverForItem(it);
+      if (u && u !== it.cover?.src) { it.cover = { type: 'url', src: u }; found++; }
+      if ((u && it.cover?.src === u) || isbnChanged) changed.push(it);
     }
     if (changed.length) upsertItems(changed);
     b.disabled = false; b.textContent = 'Trouver et corriger les images';
