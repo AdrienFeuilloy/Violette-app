@@ -463,59 +463,69 @@ async function wikiQuery(lang, params) {
 const TYPE_DESC = { jeu_video: /video game|jeu vid[ée]o/i, film: /\bfilm|movie/i, musique: /album|single|\bep\b|soundtrack|bande originale/i, jeu_societe: /board game|card game|jeu de soci[ée]t[ée]|jeu de cartes/i, bd: /comic|bande dessin|graphic novel|manga|album/i, manga: /manga|comic|bande dessin/i, livre: /novel|book|roman|livre|essai|comic|bande dessin/i, lego: /lego/i, figurine: /figur|toy|action figure|statuette/i };
 const rightKind = (p, type, strict) => { const re = TYPE_DESC[type]; if (!re) return true; if (!p.description) return !strict; return re.test(p.description); };
 const pageImg = p => { const o = p.original?.source || '', small = p.original && Math.max(p.original.width || 0, p.original.height || 0) <= 1600; const u = (small ? o : p.thumbnail?.source) || o || ''; return /logo|\.svg|icon|wordmark|horizontal|banner|screenshot/i.test(u) ? '' : u; }; // image d'origine si elle est raisonnable (les vignettes recalculées sont parfois refusées)
-async function wikiImage(c) {
-  // Le wiki anglais garde les jaquettes et affiches officielles (films, jeux, albums) ; le wiki français n'en a presque jamais.
-  const langs = /^(film|jeu_video|musique|jeu_societe)$/.test(c.type) ? ['en', 'fr'] : ['fr', 'en'];
-  const want = wordsOf(c.title), short = c.title.split(/\s[:–—-]\s|:\s/)[0].trim();
-  for (const lang of langs) {
-    try {
-      // 1) l'article qui porte exactement ce titre (redirections suivies)
-      for (const t of [...new Set([c.title, short])]) {
-        for (const p of await wikiQuery(lang, `titles=${encodeURIComponent(t)}`)) { if (!rightKind(p, c.type, false)) continue; const u = pageImg(p); if (u && await imgOK(u, 150)) return u; }
-      }
-      // 2) recherche plein texte, avec puis sans l'indice de type
-      for (const q of [`${c.title} ${WIKI_HINT[lang][c.type] || ''}`.trim(), c.title]) {
-        for (const p of await wikiQuery(lang, `generator=search&gsrlimit=4&gsrsearch=${encodeURIComponent(q)}`)) {
-          const shared = wordsOf(p.title).filter(w => want.includes(w)).length;
-          if (shared < Math.min(2, want.length) || !rightKind(p, c.type, true)) continue;
-          const u = pageImg(p); if (u && await imgOK(u, 150)) return u;
-        }
-      }
-    } catch { }
-  }
-  return '';
-}
-async function findCover(c) {
-  const book = /^(livre|bd|manga)$/.test(c.type || '');
-  const isbn = cleanCode(c.isbn);
+// Les nombres d'un titre (« Année 2, 2e partie ») doivent se retrouver dans le titre trouvé : sinon c'est un autre tome
+const numsOf = t => new Set((String(t || '').match(/\d+/g) || []).filter(n => n.length < 4).map(n => String(+n)));
+const sameVolume = (ours, theirs) => { const D = numsOf(ours); if (!D.size) return true; const R = numsOf(theirs); return [...D].every(n => R.has(n)); };
+function isbn13to10(i) { if (!/^978\d{10}$/.test(i)) return ''; const b = i.slice(3, 12); let s = 0; for (let k = 0; k < 9; k++) s += (10 - k) * +b[k]; const c = (11 - s % 11) % 11; return b + (c === 10 ? 'X' : String(c)); }
+
+// Toutes les sources, dans l'ordre du plus fiable au moins sûr. strict : une seule image pour l'import ;
+// sinon jusqu'à « max » images pour le sélecteur de la fiche (contrôles un peu plus souples).
+async function coverCandidates(c, { max = 1, strict = true } = {}) {
+  const out = [], seen = new Set();
+  const add = async (u, min = 200) => { if (!u || seen.has(u) || out.length >= max) return; seen.add(u); if (await imgOK(u, min)) out.push(u); };
+  const done = () => out.length >= max;
+  const book = /^(livre|bd|manga)$/.test(c.type || ''), isbn = cleanCode(c.isbn), want = wordsOf(c.title);
+  const titleOk = t => { const shared = wordsOf(t).filter(w => want.includes(w)).length; return shared >= (strict ? Math.min(2, want.length) : 1) && (!strict || sameVolume(c.title, t)); };
   if (book && isbn && isBookCode(isbn)) {
-    const ol = `https://covers.openlibrary.org/b/isbn/${isbn.length === 10 ? isbn10to13(isbn) : isbn}-L.jpg?default=false`;
-    if (await imgOK(ol, 300)) return ol;
+    const i13 = isbn.length === 10 ? isbn10to13(isbn) : isbn, i10 = isbn.length === 10 ? isbn : isbn13to10(i13);
+    if (i10) await add(`https://images-na.ssl-images-amazon.com/images/P/${i10}.01.LZZZZZZZ.jpg`, 250); // couverture de CETTE édition (souvent la française)
+    if (!done()) await add(`https://covers.openlibrary.org/b/isbn/${i13}-L.jpg?default=false`, 250);
   }
-  if (book && c.title) {
-    const want = wordsOf(c.title), first = (c.creators || '').split(',')[0].trim();
+  if (book && c.title && !done()) {
+    const first = (c.creators || '').split(',')[0].trim();
     const queries = [...new Set([isbn && `isbn:${isbn}`, `intitle:${c.title}${first ? ' inauthor:' + first : ''}`, c.series && `${c.series} ${c.volume || ''} ${c.publisher || ''}`.trim(), c.title].filter(Boolean))];
     for (const q of queries) {
+      if (done()) break;
       try {
-        const items = (await (await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=5`)).json()).items || [];
+        const items = (await (await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=${strict ? 5 : 10}`)).json()).items || [];
         for (const v of items) {
-          const vi = v.volumeInfo || {}, shared = wordsOf((vi.title || '') + ' ' + (vi.subtitle || '')).filter(w => want.includes(w)).length;
-          if (!q.startsWith('isbn:') && shared < Math.min(2, want.length)) continue; // pas le même livre
+          const vi = v.volumeInfo || {}, t = (vi.title || '') + ' ' + (vi.subtitle || '');
+          if (!q.startsWith('isbn:') && !titleOk(t)) continue; // pas le même livre ou pas le même tome
           const il = vi.imageLinks; const raw = il && (il.extraLarge || il.large || il.medium || il.thumbnail || il.smallThumbnail);
-          if (raw && await imgOK(gbBig(raw), 250)) return gbBig(raw);
+          if (raw) await add(gbBig(raw), 250);
+          if (done()) break;
         }
       } catch { }
     }
   }
-  if (c.type === 'musique' && c.title) {
+  if (c.type === 'musique' && c.title && !done()) {
     try {
-      const r = (await (await fetch(`https://itunes.apple.com/search?entity=album&limit=3&term=${encodeURIComponent([c.creators, c.title].filter(Boolean).join(' '))}`)).json()).results || [];
-      for (const a of r) { const u = (a.artworkUrl100 || '').replace('100x100bb', '1000x1000bb'); if (u && await imgOK(u)) return u; }
+      const r = (await (await fetch(`https://itunes.apple.com/search?entity=album&limit=${strict ? 3 : 8}&term=${encodeURIComponent([c.creators, c.title].filter(Boolean).join(' '))}`)).json()).results || [];
+      for (const al of r) { await add((al.artworkUrl100 || '').replace('100x100bb', '1000x1000bb')); if (done()) break; }
     } catch { }
   }
-  if (c.originalTitle && norm(c.originalTitle) !== norm(c.title)) { const u = await wikiImage({ ...c, title: c.originalTitle }); if (u) return u; } // titre anglais d'abord : c'est lui que porte l'article du Wikipédia anglais
-  return c.title ? wikiImage(c) : '';
+  const titles = [...new Set([c.originalTitle && norm(c.originalTitle) !== norm(c.title) ? c.originalTitle : '', c.title].filter(Boolean))]; // titre anglais d'abord
+  const langs = /^(film|jeu_video|musique|jeu_societe)$/.test(c.type) ? ['en', 'fr'] : ['fr', 'en'];
+  for (const title of titles) {
+    const short = title.split(/\s[:–—-]\s|:\s/)[0].trim(), w2 = wordsOf(title);
+    for (const lang of langs) {
+      if (done()) return out;
+      try {
+        for (const t of [...new Set([title, short])]) for (const p of await wikiQuery(lang, `titles=${encodeURIComponent(t)}`)) if (rightKind(p, c.type, false)) await add(pageImg(p), 150);
+        for (const q of [`${title} ${WIKI_HINT[lang][c.type] || ''}`.trim(), title]) {
+          if (done()) break;
+          for (const p of await wikiQuery(lang, `generator=search&gsrlimit=${strict ? 4 : 8}&gsrsearch=${encodeURIComponent(q)}`)) {
+            const shared = wordsOf(p.title).filter(x => w2.includes(x)).length;
+            if (shared < (strict ? Math.min(2, w2.length) : 1) || !rightKind(p, c.type, strict)) continue;
+            await add(pageImg(p), 150); if (done()) break;
+          }
+        }
+      } catch { }
+    }
+  }
+  return out;
 }
+const findCover = async c => (await coverCandidates(c, { max: 1, strict: true }))[0] || '';
 
 function aiPrompt(multi) {
   const colls = data.collections.map(c => `${c.name} (${c.type})`).join(', ') || 'aucune pour le moment';
@@ -842,10 +852,11 @@ function openItemForm(src, isNew = !getItem(src.id)) {
       <div class="btns" style="flex-direction:column;flex:1">
         <button class="btn ghost sm" id="cCam">📷 Prendre une photo</button>
         <button class="btn ghost sm" id="cGal">🖼️ Galerie</button>
-        <button class="btn ghost sm" id="cWeb">🌐 Belle image en ligne</button>
+        <button class="btn ghost sm" id="cWeb">🌐 Choisir une image en ligne</button>
         <button class="btn ghost sm" id="cUrl">🔗 Image par URL</button>
         <button class="btn ghost sm" id="cAi">✨ Compléter via l'IA</button>
       </div></div>
+    <div id="coverPick" hidden></div>
     <div class="field"><label>Collection</label><select id="fColl">${collOptions(it.collectionId || ui.lastCollection, { allowNew: true })}</select></div>
     ${f('fTitle', 'Titre *', it.title)}
     ${f('fCreators', T.creator + '(s)', it.creators)}
@@ -876,14 +887,24 @@ function openItemForm(src, isNew = !getItem(src.id)) {
   };
   $('#cCam').onclick = async () => { const [file] = await pickImages({ camera: true }); if (file) setBlob(await canvasToBlob(drawScaled(await fileToImage(file), 900), 0.8)); };
   $('#cGal').onclick = async () => { const [file] = await pickImages(); if (file) setBlob(await canvasToBlob(drawScaled(await fileToImage(file), 900), 0.8)); };
-  $('#cWeb').onclick = async () => {
-    const b = $('#cWeb'); b.disabled = true; b.textContent = '⏳ Recherche…';
+  // Choix de la couverture : plusieurs images proposées (toutes sources), on touche celle qui correspond à son édition
+  const pickBox = $('#coverPick');
+  const searchCovers = async (q) => {
     const coll = data.collections.find(x => x.id === $('#fColl')?.value);
-    const u = await findCover({ type: coll?.type || it.type || 'autre', title: $('#fTitle').value.trim(), creators: $('#fCreators').value.trim(), series: $('#fSeries').value.trim(), isbn: $('#fIsbn').value.trim() }).catch(() => '');
-    b.disabled = false; b.textContent = '🌐 Belle image en ligne';
-    if (!u) return toast('Aucune image trouvée : vérifie le titre, ou garde ta photo');
-    it.cover = { type: 'url', src: u }; newCoverBlob = null; setPreview(u); toast('Image trouvée ✓');
+    const c = { type: coll?.type || it.type || 'autre', title: q || $('#fTitle').value.trim(), originalTitle: it.originalTitle || '', creators: $('#fCreators').value.trim(), series: $('#fSeries').value.trim(), volume: $('#fVolume')?.value.trim() || '', isbn: q ? '' : $('#fIsbn').value.trim() };
+    pickBox.hidden = false;
+    pickBox.innerHTML = `<div class="hint" style="margin:6px 0">Recherche de couvertures pour « ${esc(c.title)} »…</div><div class="spinner" style="margin:10px auto"></div>`;
+    const list = await coverCandidates(c, { max: 9, strict: false }).catch(() => []);
+    pickBox.innerHTML = `<div class="hint" style="margin:6px 0 8px">${list.length ? 'Touche la couverture de ton édition :' : 'Aucune image trouvée.'}</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">${list.map(u => `<button type="button" class="pick" data-u="${esc(u)}" style="padding:0;border:2px solid transparent;border-radius:10px;overflow:hidden;background:var(--line);aspect-ratio:2/3"><img src="${esc(u)}" alt="" referrerpolicy="no-referrer" style="width:100%;height:100%;object-fit:cover;display:block"></button>`).join('')}</div>
+      <div style="display:flex;gap:6px;margin-top:10px"><input id="pickQ" placeholder="Autre recherche (titre, tome, éditeur…)" style="flex:1"><button type="button" class="btn ghost sm" id="pickGo">Chercher</button></div>`;
+    pickBox.querySelectorAll('.pick').forEach(btn => btn.onclick = () => {
+      pickBox.querySelectorAll('.pick').forEach(x => x.style.borderColor = 'transparent'); btn.style.borderColor = 'var(--acc)';
+      it.cover = { type: 'url', src: btn.dataset.u }; newCoverBlob = null; setPreview(btn.dataset.u); toast('Couverture choisie ✓');
+    });
+    $('#pickGo').onclick = () => { const v = $('#pickQ').value.trim(); if (v) searchCovers(v); };
   };
+  $('#cWeb').onclick = () => searchCovers('');
   $('#cUrl').onclick = () => { const u = prompt("URL de l'image :", it.cover?.type === 'url' ? it.cover.src : ''); if (u) { it.cover = { type: 'url', src: u.trim() }; newCoverBlob = null; setPreview(u.trim()); } };
   $('#cAi').onclick = async () => {
     let blob = newCoverBlob;
@@ -1101,7 +1122,7 @@ async function runAI(files, multi, opts) {
   } catch (e) { console.error(e); body.innerHTML = `<div class="empty"><div class="big">⚠️</div><p>${esc(e.message)}</p><button class="btn" id="aiSet">Réglages IA</button></div>`; $('#aiSet').onclick = openSettings; }
 }
 function matchCollection(c) {
-  if (c.collection) { const m = data.collections.find(x => norm(x.name) === norm(c.collection)); if (m) return m.id; }
+  if (c.collection) { const m = data.collections.find(x => norm(x.name) === norm(c.collection)); if (m && (m.type === c.type || !TYPES[c.type] || c.type === 'autre')) return m.id; } // une BD n'atterrit pas dans « Jeux vidéo »
   const t = TYPES[c.type] ? c.type : 'autre';
   const byType = data.collections.find(x => x.type === t); if (byType) return byType.id;
   return 'new:' + t;
@@ -1315,8 +1336,8 @@ function openSettings() {
     ${f('sToken', 'Jeton GitHub (fine-grained, Contents : read & write)', S.token, 'type="password" autocomplete="off"')}
     <div class="btns" style="margin-bottom:18px"><button class="btn ghost sm" id="sTest">Tester la connexion</button><button class="btn ghost sm" id="sPull">Recharger depuis GitHub</button></div>
     <h3 style="margin:4px 0 8px">🌐 Belles images</h3>
-    <p class="hint" style="margin-top:0">${data.items.filter(i => !i.cover).length} objet(s) sans image (Rocket). L'appli cherche leur couverture, jaquette ou affiche en ligne.</p>
-    <div class="btns" style="margin-bottom:18px"><button class="btn ghost sm" id="sCovers">Trouver les images manquantes</button></div>
+    <p class="hint" style="margin-top:0">${data.items.filter(i => !i.cover).length} objet(s) sans image (Rocket). L'appli cherche leur couverture, jaquette ou affiche en ligne, et revérifie les tomes qui partagent la même couverture.</p>
+    <div class="btns" style="margin-bottom:18px"><button class="btn ghost sm" id="sCovers">Trouver et corriger les images</button></div>
     <h3 style="margin:4px 0 8px">✨ Ajout rapide par IA</h3>
     ${f('sAiKey', 'Clé API Gemini (partagée par toutes les applis)', S.aiKey, 'type="password" autocomplete="off" placeholder="AIza…"')}
     <div class="field"><label for="sAiModel">Modèle</label><select id="sAiModel">${AI_MODELS.map(([v, l]) => `<option value="${v}" ${v === S.aiModel ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
@@ -1335,17 +1356,20 @@ function openSettings() {
   };
   $('#sPull').onclick = () => { apply(); sync(); };
   $('#sCovers').onclick = async () => {
-    const b = $('#sCovers'), todo = data.items.filter(i => !i.cover && i.title);
+    // objets sans image, et tomes différents qui partagent la même couverture (à revérifier un par un)
+    const byUrl = {}; data.items.forEach(i => { if (i.cover?.type === 'url') (byUrl[i.cover.src] ||= []).push(i); });
+    const shared = Object.values(byUrl).filter(l => new Set(l.map(i => norm(i.title))).size > 1).flat();
+    const b = $('#sCovers'), todo = [...data.items.filter(i => !i.cover && i.title), ...shared];
     if (!todo.length) return toast('Tous tes objets ont déjà une image');
     b.disabled = true; let found = 0; const changed = [];
     for (let k = 0; k < todo.length; k++) {
       b.textContent = `Recherche ${k + 1}/${todo.length}… (${found} trouvée${found > 1 ? 's' : ''})`;
       const it = todo[k], ty = data.collections.find(c => c.id === it.collectionId)?.type || 'autre';
       const u = await findCover({ ...it, type: ty }).catch(() => '');
-      if (u) { it.cover = { type: 'url', src: u }; changed.push(it); found++; }
+      if (u && u !== it.cover?.src) { it.cover = { type: 'url', src: u }; changed.push(it); found++; }
     }
     if (changed.length) upsertItems(changed);
-    b.disabled = false; b.textContent = 'Trouver les images manquantes';
+    b.disabled = false; b.textContent = 'Trouver et corriger les images';
     render(); toast(`${found} image(s) trouvée(s) sur ${todo.length}`);
   };
   $('#sLogout').onclick = () => closeSheet(() => kitLogout());
