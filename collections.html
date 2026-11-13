@@ -502,6 +502,7 @@ async function findCover(c) {
       for (const a of r) { const u = (a.artworkUrl100 || '').replace('100x100bb', '1000x1000bb'); if (u && await imgOK(u)) return u; }
     } catch { }
   }
+  if (c.originalTitle && norm(c.originalTitle) !== norm(c.title)) { const u = await wikiImage({ ...c, title: c.originalTitle }); if (u) return u; } // titre anglais d'abord : c'est lui que porte l'article du Wikipédia anglais
   return c.title ? wikiImage(c) : '';
 }
 
@@ -515,7 +516,7 @@ Lis attentivement tout le texte visible (couverture, tranche, dos, code-barres, 
 Collections de l'utilisateur : ${colls}.
 Séries déjà présentes (réutilise exactement la même orthographe si c'est la même série) : ${series}.
 Réponds UNIQUEMENT avec un JSON valide, sans aucun texte autour, au format :
-{"items":[{"type":"livre|bd|manga|musique|film|jeu_video|jeu_societe|lego|figurine|autre","collection":"nom exact d'une collection existante adaptée, sinon \\"\\"","title":"titre exact de l'objet","creators":"auteur(s)/artiste(s)/studio, séparés par des virgules","series":"série, saga ou cycle si applicable","volume":"numéro de tome/volume (chiffres) si applicable","publisher":"éditeur / label / studio / marque","year":"année","isbn":"ISBN-13 ou EAN si lisible (chiffres uniquement)","format":"ex. Broché, Relié, Poche, Intégrale, Vinyle 33T, CD, Blu-ray, DVD, PS5, Switch, Boîte…","genre":"genre principal","language":"langue de l'édition","tags":["mots-clés utiles"],"description":"résumé en 1 ou 2 phrases si tu connais l'œuvre, sinon \\"\\"","seen":"texte lu tel quel sur l'objet (tranche, couverture), même partiel","confidence":0.0,"bbox":[x0,y0,x1,y1]}]}
+{"items":[{"type":"livre|bd|manga|musique|film|jeu_video|jeu_societe|lego|figurine|autre","collection":"nom exact d'une collection existante adaptée, sinon \\"\\"","title":"titre exact de l'objet","creators":"auteur(s)/artiste(s)/studio, séparés par des virgules","series":"série, saga ou cycle si applicable","volume":"numéro de tome/volume (chiffres) si applicable","publisher":"éditeur / label / studio / marque","year":"année","isbn":"ISBN-13 ou EAN si lisible (chiffres uniquement)","format":"ex. Broché, Relié, Poche, Intégrale, Vinyle 33T, CD, Blu-ray, DVD, PS5, Switch, Boîte…","genre":"genre principal","language":"langue de l'édition","tags":["mots-clés utiles"],"description":"résumé en 1 ou 2 phrases si tu connais l'œuvre, sinon \\"\\"","seen":"texte lu tel quel sur l'objet (tranche, couverture), même partiel","originalTitle":"titre original ou international en anglais si différent (ex. Pokémon Écarlate → Pokémon Scarlet), sinon \\"\\"","confidence":0.0,"bbox":[x0,y0,x1,y1]}]}
 "confidence" est entre 0 et 1. "bbox" = rectangle approximatif de l'objet dans l'image en fractions (0 à 1) de la largeur et de la hauteur, origine en haut à gauche.`;
 }
 const BARCODE_PROMPT = `Lis le ou les codes-barres (EAN-13, ISBN, UPC) visibles sur la photo, chiffre par chiffre (utilise aussi les chiffres imprimés sous les barres). Réponds UNIQUEMENT en JSON : {"codes":["9782..."]}. Si aucun code lisible : {"codes":[]}.`;
@@ -942,7 +943,7 @@ function openAddMenu(preColl) {
   const opts = () => { ui.lastStatus = $('#aStatus').value; saveUI(); return { coll: $('#aColl').value, status: $('#aStatus').value }; };
   $('#mAi1').onclick = async () => { const o = opts(); const files = await pickImages({ camera: true }); if (files.length) runAI(files, false, o); };
   $('#mAiN').onclick = async () => { const o = opts(); const files = await pickImages({ camera: true }); if (files.length) runAI(files, true, o); };
-  $('#mAiG').onclick = async () => { const o = opts(); const files = await pickImages({ multiple: true }); if (files.length) runAI(files, files.length === 1 ? null : false, o); };
+  $('#mAiG').onclick = async () => { const o = opts(); const files = await pickImages({ multiple: true }); if (files.length) runAI(files, null, o); }; // chaque photo : l'IA détecte seule s'il y a un ou plusieurs objets
   $('#mScan').onclick = () => openScanner(opts());
   $('#mManual').onclick = () => { const o = opts(); let cid = o.coll || data.collections[0]?.id || ''; openItemForm({ ...blankItem(cid), status: o.status }, true); };
 }
@@ -953,7 +954,7 @@ function openAddMenu(preColl) {
 function describePrompt(multi) {
   return `Tu catalogues une collection personnelle (livres, BD, comics, mangas, vinyles/CD, films, jeux vidéo, jeux de société, LEGO, figurines…).
 ${multi ? `Liste TOUS les objets visibles sur la photo, de gauche à droite puis de haut en bas, même partiellement visibles. Une série dont plusieurs tomes sont visibles = une fiche PAR tome (ex. « Injustice Année 1 – 1re partie », « Année 1 – 2e partie »…).` : `Identifie l'objet principal de la photo.`}
-Lis tout le texte visible : tranches (texte souvent vertical, à tourner mentalement), couvertures, logos d'éditeur, de collection ou de console, numéros de tome. Puis utilise tes connaissances, et la recherche Google si tu y as accès, pour faire une vraie fiche bibliographique de chaque objet : titre exact, sous-titre, auteur(s) avec leur rôle, éditeur et collection, série et numéro de tome, date de parution (édition française si c'est elle), format, ISBN si tu le connais, genre, résumé en 2 phrases.
+Lis tout le texte visible : tranches (texte souvent vertical, à tourner mentalement), couvertures, logos d'éditeur, de collection ou de console, numéros de tome. Puis utilise tes connaissances, et la recherche Google si tu y as accès, pour faire une vraie fiche bibliographique de chaque objet : titre exact, titre original ou anglais s'il diffère, sous-titre, auteur(s) avec leur rôle, éditeur et collection, série et numéro de tome, date de parution (édition française si c'est elle), format, ISBN si tu le connais, genre, résumé en 2 phrases.
 Pour chaque objet, termine sa fiche par trois lignes :
 Position : x0,y0,x1,y1 (rectangle de l'objet dans la photo, en fractions de 0 à 1, origine en haut à gauche)
 Certitude : sûr, probable ou incertain
@@ -969,10 +970,16 @@ ${fiches.slice(0, 30000)}
 Convertis CHAQUE fiche en un objet du JSON demandé ci-dessous, sans en ajouter ni en retirer, en gardant les informations des fiches. "confidence" : sûr = 0.9, probable = 0.65, incertain = 0.35. "bbox" = la Position de la fiche. "seen" = le Texte lu.
 ${spec.slice(spec.indexOf("Collections de l'utilisateur"))}`;
 }
+let aiErrors = [];
 async function describeAndStructure(b64, multi) {
   const fiches = await kitAI([{ mime: 'image/jpeg', b64 }, describePrompt(multi)], { key: S.aiKey, model: S.aiModel, maxTokens: 12000, json: false, search: true });
   // mise en forme : simple travail de texte, confié au modèle Flash-Lite (quota séparé, plus léger)
-  return parseJsonLoose(await kitAI([structurePrompt(fiches, multi)], { key: S.aiKey, model: 'gemini-flash-lite-latest', maxTokens: 12000 }));
+  const expected = (fiches.match(/^\s*Position\s*:/gim) || []).length;
+  let r = parseJsonLoose(await kitAI([structurePrompt(fiches, multi)], { key: S.aiKey, model: 'gemini-flash-lite-latest', maxTokens: 16000 }));
+  if (expected > 1 && (r.items || []).length < expected * 0.8) { // des fiches ont été oubliées : on refait la mise en forme avec le modèle principal
+    try { const r2 = parseJsonLoose(await kitAI([structurePrompt(fiches, multi)], { key: S.aiKey, model: S.aiModel, maxTokens: 16000 })); if ((r2.items || []).length > (r.items || []).length) r = r2; } catch { }
+  }
+  return r;
 }
 
 // 2e passage pour une étagère : chaque objet est recadré en pleine définition et relu de près,
@@ -1001,7 +1008,7 @@ ${aiPrompt(false).split('Réponds UNIQUEMENT')[1] ? 'Réponds UNIQUEMENT' + aiPr
 async function runAI(files, multi, opts) {
   if (!S.aiKey) { toast("Ajoute d'abord ta clé Gemini"); openSettings(); return; }
   const body = openSheet('Analyse IA', `<div id="aiPrev"></div><div class="spinner"></div><p class="hint" style="text-align:center" id="aiStep">Préparation de la photo…</p>`);
-  const cands = [];
+  const cands = []; aiErrors = [];
   try {
     for (let k = 0; k < files.length; k++) {
       const img = await fileToImage(files[k]);
@@ -1012,13 +1019,15 @@ async function runAI(files, multi, opts) {
       $('#aiStep').textContent = `Analyse de la photo ${k + 1}/${files.length}…`;
       const isMulti = multi === null ? true : multi; // galerie 1 photo : l'IA détecte seule
       $('#aiStep').textContent = `Photo ${k + 1}/${files.length} : Gemini identifie les objets…`;
-      const r = await describeAndStructure(await blobToB64(full), isMulti);
-      const found = (r.items || []).slice(0, isMulti ? 40 : 1).map(x => ({ ...x, _img: img, _uid: uid() }));
+      let r;
+      try { r = await describeAndStructure(await blobToB64(full), isMulti); }
+      catch (e) { aiErrors.push(`Photo ${k + 1} : ${e.message}`); if (/quota/i.test(e.message)) break; continue; } // une photo en échec n'arrête pas les autres (sauf quota épuisé)
+      const found = (r.items || []).slice(0, isMulti ? 60 : 1).map(x => ({ ...x, _img: img, _uid: uid() }));
       const unsure = found.filter(c => !c.title || (c.confidence ?? 0) < 0.5);
       if (isMulti && unsure.length) await closeLook(img, unsure, k, files.length); // relecture de près des seuls objets incertains
       cands.push(...found);
     }
-    if (!cands.length) { body.innerHTML = `<div class="empty"><div class="big">🤔</div><p>Aucun objet reconnu. Essaie avec une photo plus nette, de face, bien éclairée.</p></div>`; return; }
+    if (!cands.length) { body.innerHTML = `<div class="empty"><div class="big">🤔</div><p>${aiErrors.length ? aiErrors.map(esc).join('<br>') : 'Aucun objet reconnu. Essaie avec une photo plus nette, de face, bien éclairée.'}</p></div>`; return; }
     $('#aiStep').textContent = `Recherche des couvertures et compléments…`;
     await Promise.all(cands.map(async c => {
       c.volume = String(c.volume ?? '').replace(/[^\dA-Za-z.\-]/g, '');
@@ -1042,6 +1051,7 @@ async function runAI(files, multi, opts) {
       c._coll = opts.coll || matchCollection(c);
     }));
     renderReview(cands);
+    if (aiErrors.length) $('#sheetBody').insertAdjacentHTML('afterbegin', `<div class="warn" style="margin-bottom:10px">⚠︎ ${aiErrors.map(esc).join('<br>')}</div>`);
   } catch (e) { console.error(e); body.innerHTML = `<div class="empty"><div class="big">⚠️</div><p>${esc(e.message)}</p><button class="btn" id="aiSet">Réglages IA</button></div>`; $('#aiSet').onclick = openSettings; }
 }
 function matchCollection(c) {
@@ -1101,7 +1111,7 @@ function renderReview(cands) {
     for (const c of cands.filter(x => x._on && String(x.title || '').trim())) {
       let cid = c._coll;
       if (cid.startsWith('new:')) cid = created[cid] ||= newCollection(cid.slice(4)).id;
-      const it = { ...blankItem(cid), title: c.title.trim(), subtitle: c.subtitle || '', creators: c.creators || '', series: c.series || '', volume: c.volume || '', publisher: c.publisher || '', year: c.year || '', isbn: c.isbn || '', format: c.format || '', genre: c.genre || '', language: c.language || '', tags: Array.isArray(c.tags) ? c.tags.slice(0, 8) : [], description: c.description || '', status: c._status, source: 'ia' };
+      const it = { ...blankItem(cid), title: c.title.trim(), originalTitle: c.originalTitle || '', subtitle: c.subtitle || '', creators: c.creators || '', series: c.series || '', volume: c.volume || '', publisher: c.publisher || '', year: c.year || '', isbn: c.isbn || '', format: c.format || '', genre: c.genre || '', language: c.language || '', tags: Array.isArray(c.tags) ? c.tags.slice(0, 8) : [], description: c.description || '', status: c._status, source: 'ia' };
       if (it.status === 'possede') it.acquiredAt = todayISO();
       if (c._cover === 'online') it.cover = { type: 'url', src: c._online };
       else if (c._cover === 'photo') it.cover = await storeCoverBlob(it.id, c._photoBlob);
