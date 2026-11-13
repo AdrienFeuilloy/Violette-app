@@ -449,18 +449,34 @@ async function askClaude(imagesB64, prompt, maxTokens = 4000) {
 // et pochette iTunes pour la musique. Une image n'est retenue que si elle se charge et fait au moins 200 px.
 const imgOK = (src, min = 200) => new Promise(res => { if (!src) return res(false); const i = new Image(); i.referrerPolicy = 'no-referrer'; const t = setTimeout(() => res(false), 7000); i.onload = () => { clearTimeout(t); res(Math.max(i.naturalWidth, i.naturalHeight) >= min); }; i.onerror = () => { clearTimeout(t); res(false); }; i.src = src; });
 const gbBig = u => String(u || '').replace('http:', 'https:').replace('&edge=curl', '').replace(/&zoom=\d/, '') + '&fife=w800';
-const WIKI_HINT = { film: 'film', jeu_video: 'jeu vidéo', jeu_societe: 'jeu de société', musique: 'album', lego: 'LEGO', figurine: 'figurine', bd: 'bande dessinée', manga: 'manga', livre: 'livre' };
-const wordsOf = t => norm(t).split(/[^a-z0-9]+/).filter(w => w.length > 2);
+// Indice de type ajouté à la recherche, dans la langue du wiki (un mot français fait échouer la recherche sur le wiki anglais)
+const WIKI_HINT = {
+  fr: { film: 'film', jeu_video: 'jeu vidéo', jeu_societe: 'jeu de société', musique: 'album', lego: 'LEGO', bd: 'bande dessinée', manga: 'manga', livre: 'roman' },
+  en: { film: 'film', jeu_video: 'video game', jeu_societe: 'board game', musique: 'album', lego: 'LEGO', bd: 'comics', manga: 'manga', livre: 'novel' },
+};
+const wordsOf = t => norm(t).split(/[^a-z0-9]+/).filter(w => w.length > 1 && !['the', 'of', 'and', 'le', 'la', 'les', 'de', 'des', 'du'].includes(w));
+async function wikiQuery(lang, params) {
+  const u = `https://${lang}.wikipedia.org/w/api.php?action=query&format=json&origin=*&redirects=1&prop=pageimages&piprop=thumbnail|original&pithumbsize=800&pilicense=any&${params}`;
+  return Object.values((await (await fetch(u)).json()).query?.pages || {}).sort((a, b) => (a.index || 0) - (b.index || 0));
+}
+const pageImg = p => { const u = p.thumbnail?.source || p.original?.source || ''; return /logo|\.svg|icon|wordmark/i.test(u) ? '' : u; };
 async function wikiImage(c) {
-  const q = [c.title, c.series && !norm(c.title).includes(norm(c.series)) ? c.series : '', WIKI_HINT[c.type] || ''].filter(Boolean).join(' ');
-  for (const lang of ['fr', 'en']) {
+  // Le wiki anglais garde les jaquettes et affiches officielles (films, jeux, albums) ; le wiki français n'en a presque jamais.
+  const langs = /^(film|jeu_video|musique|jeu_societe)$/.test(c.type) ? ['en', 'fr'] : ['fr', 'en'];
+  const want = wordsOf(c.title), short = c.title.split(/\s[:–—-]\s|:\s/)[0].trim();
+  for (const lang of langs) {
     try {
-      const u = `https://${lang}.wikipedia.org/w/api.php?action=query&format=json&origin=*&generator=search&gsrsearch=${encodeURIComponent(q)}&gsrlimit=3&prop=pageimages&piprop=thumbnail&pithumbsize=800&pilicense=any`;
-      const pages = Object.values((await (await fetch(u)).json()).query?.pages || {}).sort((a, b) => a.index - b.index);
-      const want = wordsOf(c.title);
-      for (const p of pages) {
-        const shared = wordsOf(p.title).filter(w => want.includes(w)).length;
-        if (p.thumbnail?.source && shared >= Math.min(2, want.length) && !/logo|\.svg/i.test(p.thumbnail.source) && await imgOK(p.thumbnail.source)) return p.thumbnail.source;
+      // 1) l'article qui porte exactement ce titre (redirections suivies)
+      for (const t of [...new Set([c.title, short])]) {
+        for (const p of await wikiQuery(lang, `titles=${encodeURIComponent(t)}`)) { const u = pageImg(p); if (u && await imgOK(u, 150)) return u; }
+      }
+      // 2) recherche plein texte, avec puis sans l'indice de type
+      for (const q of [`${c.title} ${WIKI_HINT[lang][c.type] || ''}`.trim(), c.title]) {
+        for (const p of await wikiQuery(lang, `generator=search&gsrlimit=4&gsrsearch=${encodeURIComponent(q)}`)) {
+          const shared = wordsOf(p.title).filter(w => want.includes(w)).length;
+          if (shared < Math.min(2, want.length)) continue;
+          const u = pageImg(p); if (u && await imgOK(u, 150)) return u;
+        }
       }
     } catch { }
   }
@@ -1227,6 +1243,9 @@ function openSettings() {
     ${f('sMedia', 'Dossier des photos', S.mediaDir, 'autocapitalize="off"')}
     ${f('sToken', 'Jeton GitHub (fine-grained, Contents : read & write)', S.token, 'type="password" autocomplete="off"')}
     <div class="btns" style="margin-bottom:18px"><button class="btn ghost sm" id="sTest">Tester la connexion</button><button class="btn ghost sm" id="sPull">Recharger depuis GitHub</button></div>
+    <h3 style="margin:4px 0 8px">🌐 Belles images</h3>
+    <p class="hint" style="margin-top:0">${data.items.filter(i => !i.cover).length} objet(s) sans image (Rocket). L'appli cherche leur couverture, jaquette ou affiche en ligne.</p>
+    <div class="btns" style="margin-bottom:18px"><button class="btn ghost sm" id="sCovers">Trouver les images manquantes</button></div>
     <h3 style="margin:4px 0 8px">✨ Ajout rapide par IA</h3>
     ${f('sAiKey', 'Clé API Gemini (partagée par toutes les applis)', S.aiKey, 'type="password" autocomplete="off" placeholder="AIza…"')}
     <div class="field"><label for="sAiModel">Modèle</label><select id="sAiModel">${AI_MODELS.map(([v, l]) => `<option value="${v}" ${v === S.aiModel ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
@@ -1244,6 +1263,20 @@ function openSettings() {
     catch (e) { toast('✗ ' + e.message); }
   };
   $('#sPull').onclick = () => { apply(); sync(); };
+  $('#sCovers').onclick = async () => {
+    const b = $('#sCovers'), todo = data.items.filter(i => !i.cover && i.title);
+    if (!todo.length) return toast('Tous tes objets ont déjà une image');
+    b.disabled = true; let found = 0; const changed = [];
+    for (let k = 0; k < todo.length; k++) {
+      b.textContent = `Recherche ${k + 1}/${todo.length}… (${found} trouvée${found > 1 ? 's' : ''})`;
+      const it = todo[k], ty = data.collections.find(c => c.id === it.collectionId)?.type || 'autre';
+      const u = await findCover({ ...it, type: ty }).catch(() => '');
+      if (u) { it.cover = { type: 'url', src: u }; changed.push(it); found++; }
+    }
+    if (changed.length) upsertItems(changed);
+    b.disabled = false; b.textContent = 'Trouver les images manquantes';
+    render(); toast(`${found} image(s) trouvée(s) sur ${todo.length}`);
+  };
   $('#sLogout').onclick = () => closeSheet(() => kitLogout());
   $('#sSave').onclick = () => { apply(); closeSheet(); toast('Réglages enregistrés'); scheduleSync(200); };
   $('#sReset').onclick = () => { if (confirm('Effacer les données locales ? (celles déjà synchronisées sur GitHub seront rechargées)')) { data = emptyData(); syncMeta = { sha: null, dirty: false, lastSync: 0, pendingMedia: [] }; write(LS.data, data); saveSync(); closeSheet(); render(); if (gh.ok()) sync(); } };
