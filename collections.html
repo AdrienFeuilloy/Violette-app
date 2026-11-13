@@ -456,9 +456,12 @@ const WIKI_HINT = {
 };
 const wordsOf = t => norm(t).split(/[^a-z0-9]+/).filter(w => w.length > 1 && !['the', 'of', 'and', 'le', 'la', 'les', 'de', 'des', 'du'].includes(w));
 async function wikiQuery(lang, params) {
-  const u = `https://${lang}.wikipedia.org/w/api.php?action=query&format=json&origin=*&redirects=1&prop=pageimages&piprop=thumbnail|original&pithumbsize=800&pilicense=any&${params}`;
+  const u = `https://${lang}.wikipedia.org/w/api.php?action=query&format=json&origin=*&redirects=1&prop=pageimages|description&piprop=thumbnail|original&pithumbsize=800&pilicense=any&${params}`;
   return Object.values((await (await fetch(u)).json()).query?.pages || {}).sort((a, b) => (a.index || 0) - (b.index || 0));
 }
+// L'article doit être du bon genre : « Injustice » (la notion) n'est pas la BD, « Avatar » (le film) n'est pas le jeu
+const TYPE_DESC = { jeu_video: /video game|jeu vid[ée]o/i, film: /\bfilm|movie/i, musique: /album|single|\bep\b|soundtrack|bande originale/i, jeu_societe: /board game|card game|jeu de soci[ée]t[ée]|jeu de cartes/i, bd: /comic|bande dessin|graphic novel|manga|album/i, manga: /manga|comic|bande dessin/i, livre: /novel|book|roman|livre|essai|comic|bande dessin/i, lego: /lego/i, figurine: /figur|toy|action figure|statuette/i };
+const rightKind = (p, type, strict) => { const re = TYPE_DESC[type]; if (!re) return true; if (!p.description) return !strict; return re.test(p.description); };
 const pageImg = p => { const o = p.original?.source || '', small = p.original && Math.max(p.original.width || 0, p.original.height || 0) <= 1600; const u = (small ? o : p.thumbnail?.source) || o || ''; return /logo|\.svg|icon|wordmark|horizontal|banner|screenshot/i.test(u) ? '' : u; }; // image d'origine si elle est raisonnable (les vignettes recalculées sont parfois refusées)
 async function wikiImage(c) {
   // Le wiki anglais garde les jaquettes et affiches officielles (films, jeux, albums) ; le wiki français n'en a presque jamais.
@@ -468,13 +471,13 @@ async function wikiImage(c) {
     try {
       // 1) l'article qui porte exactement ce titre (redirections suivies)
       for (const t of [...new Set([c.title, short])]) {
-        for (const p of await wikiQuery(lang, `titles=${encodeURIComponent(t)}`)) { const u = pageImg(p); if (u && await imgOK(u, 150)) return u; }
+        for (const p of await wikiQuery(lang, `titles=${encodeURIComponent(t)}`)) { if (!rightKind(p, c.type, false)) continue; const u = pageImg(p); if (u && await imgOK(u, 150)) return u; }
       }
       // 2) recherche plein texte, avec puis sans l'indice de type
       for (const q of [`${c.title} ${WIKI_HINT[lang][c.type] || ''}`.trim(), c.title]) {
         for (const p of await wikiQuery(lang, `generator=search&gsrlimit=4&gsrsearch=${encodeURIComponent(q)}`)) {
           const shared = wordsOf(p.title).filter(w => want.includes(w)).length;
-          if (shared < Math.min(2, want.length)) continue;
+          if (shared < Math.min(2, want.length) || !rightKind(p, c.type, true)) continue;
           const u = pageImg(p); if (u && await imgOK(u, 150)) return u;
         }
       }
@@ -490,11 +493,19 @@ async function findCover(c) {
     if (await imgOK(ol, 300)) return ol;
   }
   if (book && c.title) {
-    try {
-      const q = isbn ? `isbn:${isbn}` : `intitle:${c.title}${c.creators ? ' inauthor:' + c.creators.split(',')[0] : ''}`;
-      const items = (await (await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=3`)).json()).items || [];
-      for (const v of items) { const il = v.volumeInfo?.imageLinks; const raw = il && (il.extraLarge || il.large || il.medium || il.thumbnail || il.smallThumbnail); if (raw && await imgOK(gbBig(raw), 250)) return gbBig(raw); }
-    } catch { }
+    const want = wordsOf(c.title), first = (c.creators || '').split(',')[0].trim();
+    const queries = [...new Set([isbn && `isbn:${isbn}`, `intitle:${c.title}${first ? ' inauthor:' + first : ''}`, c.series && `${c.series} ${c.volume || ''} ${c.publisher || ''}`.trim(), c.title].filter(Boolean))];
+    for (const q of queries) {
+      try {
+        const items = (await (await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=5`)).json()).items || [];
+        for (const v of items) {
+          const vi = v.volumeInfo || {}, shared = wordsOf((vi.title || '') + ' ' + (vi.subtitle || '')).filter(w => want.includes(w)).length;
+          if (!q.startsWith('isbn:') && shared < Math.min(2, want.length)) continue; // pas le même livre
+          const il = vi.imageLinks; const raw = il && (il.extraLarge || il.large || il.medium || il.thumbnail || il.smallThumbnail);
+          if (raw && await imgOK(gbBig(raw), 250)) return gbBig(raw);
+        }
+      } catch { }
+    }
   }
   if (c.type === 'musique' && c.title) {
     try {
@@ -952,13 +963,51 @@ function openAddMenu(preColl) {
 
 // Étape 1 : Gemini décrit librement chaque objet, comme dans l'appli Gemini (réflexion + recherche Google).
 function describePrompt(multi) {
+  const colls = data.collections.map(c => `${c.name} (${c.type})`).join(', ') || 'aucune';
   return `Tu catalogues une collection personnelle (livres, BD, comics, mangas, vinyles/CD, films, jeux vidéo, jeux de société, LEGO, figurines…).
-${multi ? `Liste TOUS les objets visibles sur la photo, de gauche à droite puis de haut en bas, même partiellement visibles. Une série dont plusieurs tomes sont visibles = une fiche PAR tome (ex. « Injustice Année 1 – 1re partie », « Année 1 – 2e partie »…).` : `Identifie l'objet principal de la photo.`}
-Lis tout le texte visible : tranches (texte souvent vertical, à tourner mentalement), couvertures, logos d'éditeur, de collection ou de console, numéros de tome. Puis utilise tes connaissances, et la recherche Google si tu y as accès, pour faire une vraie fiche bibliographique de chaque objet : titre exact, titre original ou anglais s'il diffère, sous-titre, auteur(s) avec leur rôle, éditeur et collection, série et numéro de tome, date de parution (édition française si c'est elle), format, ISBN si tu le connais, genre, résumé en 2 phrases.
-Pour chaque objet, termine sa fiche par trois lignes :
+${multi ? `Liste TOUS les objets visibles sur la photo, de gauche à droite puis de haut en bas, même partiellement visibles : une photo d'étagère en contient souvent 10 à 30. Ne regroupe JAMAIS plusieurs objets en une fiche : une série dont 11 tomes sont visibles = 11 fiches, chacune avec son titre complet et son numéro (ex. « Injustice : Les Dieux sont parmi nous – Année 1, 1re partie », tome 1).` : `Identifie l'objet principal de la photo.`}
+Lis tout le texte visible : tranches (texte souvent vertical, à tourner mentalement), couvertures, logos d'éditeur, de collection ou de console, numéros de tome. Puis utilise tes connaissances, et la recherche Google si tu y as accès, pour compléter chaque fiche.
+Écris chaque fiche EXACTEMENT dans ce format, une ligne par champ (laisse vide ce que tu ne sais pas), et sépare les fiches par une ligne « --- » :
+Type : livre, bd, manga, musique, film, jeu_video, jeu_societe, lego, figurine ou autre
+Titre : titre exact complet de cet objet (édition française si c'est elle)
+Titre original : titre original ou anglais s'il diffère (ex. Pokémon Écarlate → Pokémon Scarlet)
+Auteurs : auteur(s), artiste(s) ou studio, séparés par des virgules
+Série : série, saga ou cycle
+Tome : numéro (chiffres)
+Éditeur : éditeur, label ou studio
+Année : année de parution (4 chiffres)
+Format : ex. Relié, Broché, Poche, Switch, PS5, Blu-ray, Vinyle…
+ISBN : ISBN-13 ou EAN si tu le connais avec certitude
+Genre : genre principal
+Langue : langue de l'édition
+Résumé : 1 ou 2 phrases
+Collection : nom exact d'une de mes collections qui convient, sinon vide (mes collections : ${colls})
 Position : x0,y0,x1,y1 (rectangle de l'objet dans la photo, en fractions de 0 à 1, origine en haut à gauche)
 Certitude : sûr, probable ou incertain
 Texte lu : le texte réellement visible sur l'objet`;
+}
+// Lecture locale des fiches (pas de 2e appel à l'IA) : chaque « Champ : valeur » devient une propriété.
+const FIELDS = { type: 'type', titre: 'title', 'titre original': 'originalTitle', auteurs: 'creators', auteur: 'creators', serie: 'series', tome: 'volume', editeur: 'publisher', annee: 'year', format: 'format', isbn: 'isbn', genre: 'genre', langue: 'language', resume: 'description', collection: 'collection', position: 'bbox', certitude: 'confidence', 'texte lu': 'seen' };
+function parseFiches(text) {
+  const out = [];
+  for (const block of String(text).split(/^\s*(?:-{3,}|#{2,4}\s.*|\*{3,})\s*$/m)) {
+    const it = {};
+    for (const line of block.split('\n')) {
+      const m = line.match(/^\s*(?:[-*•]\s*)?\**\s*([A-Za-zÀ-ÿ ]{3,16}?)\s*\**\s*:\s*\**\s*(.*?)\s*$/);
+      if (!m) continue;
+      const k = FIELDS[norm(m[1])]; if (!k || !m[2]) continue;
+      it[k] = m[2].replace(/\*+/g, '').trim();
+    }
+    if (!it.title && !it.seen) continue;
+    it.type = norm(it.type || '').replace(/[\s-]+/g, '_').replace('jeu_de_societe', 'jeu_societe').replace('jeux_video', 'jeu_video').replace(/^bande_dessinee$/, 'bd');
+    if (!TYPES[it.type]) it.type = it.type.includes('jeu') ? 'jeu_video' : 'autre';
+    const c = norm(it.confidence || ''); it.confidence = c.startsWith('sur') ? 0.9 : c.startsWith('prob') ? 0.65 : c ? 0.35 : 0.5;
+    const nums = String(it.bbox || '').match(/[\d.]+/g); it.bbox = nums && nums.length >= 4 ? nums.slice(0, 4).map(Number).map(n => n > 1 ? n / 100 : n) : null;
+    if (/^(vide|aucun|aucune|inconnu|-|n\/a)$/i.test(it.title || '')) it.title = '';
+    for (const k of Object.keys(it)) if (typeof it[k] === 'string' && /^(vide|aucun|aucune|inconnu|non|-|n\/a|néant)$/i.test(it[k])) it[k] = '';
+    out.push(it);
+  }
+  return out;
 }
 // Étape 2 : les fiches sont converties en JSON pour l'appli (texte seul, rapide).
 function structurePrompt(fiches, multi) {
@@ -972,14 +1021,11 @@ ${spec.slice(spec.indexOf("Collections de l'utilisateur"))}`;
 }
 let aiErrors = [];
 async function describeAndStructure(b64, multi) {
-  const fiches = await kitAI([{ mime: 'image/jpeg', b64 }, describePrompt(multi)], { key: S.aiKey, model: S.aiModel, maxTokens: 12000, json: false, search: true });
-  // mise en forme : simple travail de texte, confié au modèle Flash-Lite (quota séparé, plus léger)
-  const expected = (fiches.match(/^\s*Position\s*:/gim) || []).length;
-  let r = parseJsonLoose(await kitAI([structurePrompt(fiches, multi)], { key: S.aiKey, model: 'gemini-flash-lite-latest', maxTokens: 16000 }));
-  if (expected > 1 && (r.items || []).length < expected * 0.8) { // des fiches ont été oubliées : on refait la mise en forme avec le modèle principal
-    try { const r2 = parseJsonLoose(await kitAI([structurePrompt(fiches, multi)], { key: S.aiKey, model: S.aiModel, maxTokens: 16000 })); if ((r2.items || []).length > (r.items || []).length) r = r2; } catch { }
-  }
-  return r;
+  const fiches = await kitAI([{ mime: 'image/jpeg', b64 }, describePrompt(multi)], { key: S.aiKey, model: S.aiModel, maxTokens: 16000, json: false, search: true });
+  const items = parseFiches(fiches);
+  if (items.length) return { items }; // cas normal : lu sur place, aucune demande de plus
+  // format non respecté : on demande la mise en forme JSON (Flash-Lite, quota séparé)
+  return parseJsonLoose(await kitAI([structurePrompt(fiches, multi)], { key: S.aiKey, model: 'gemini-flash-lite-latest', maxTokens: 16000 }));
 }
 
 // 2e passage pour une étagère : chaque objet est recadré en pleine définition et relu de près,
