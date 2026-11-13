@@ -1112,9 +1112,9 @@ function openItemForm(src, isNew = !getItem(src.id)) {
     if (cid.startsWith('new:')) cid = newCollection(cid.slice(4)).id;
     const v = id => $('#' + id).value.trim();
     Object.assign(it, { collectionId: cid, title, subtitle: v('fSubtitle'), creators: v('fCreators'), series: v('fSeries'), volume: v('fVolume'), status: v('fStatus'), progress: v('fProgress'), isbn: cleanCode(v('fIsbn')),
-    if (cleanCode(v('fIsbn')) !== cleanCode(src.isbn || '')) it.isbnChecked = !!cleanCode(v('fIsbn')); // ISBN tapé ou corrigé à la main : on lui fait confiance
       publisher: v('fPublisher'), year: v('fYear'), format: v('fFormat'), genre: v('fGenre'), language: v('fLanguage'), condition: v('fCondition'), tags: v('fTags').split(',').map(s => s.trim()).filter(Boolean),
       location: v('fLoc'), copies: Math.max(1, parseInt(v('fCopies')) || 1), pricePaid: v('fPaid').replace(',', '.'), value: v('fValue').replace(',', '.'), acquiredAt: v('fAcq'), description: v('fDesc'), notes: v('fNotes') });
+    if (cleanCode(v('fIsbn')) !== cleanCode(src.isbn || '')) it.isbnChecked = !!cleanCode(v('fIsbn')); // ISBN tapé ou corrigé à la main : on lui fait confiance
     if (it.status === 'possede' && isNew && !it.acquiredAt) it.acquiredAt = todayISO();
     if (newCoverBlob) { const old = it.cover; it.cover = await storeCoverBlob(it.id, newCoverBlob); if (old?.type === 'repo') removeMedia(old.path); }
     if (isNew) { const d = findDuplicate(it); if (d && !confirm(`« ${d.title} » semble déjà présent. Ajouter quand même ?`)) return; }
