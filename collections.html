@@ -441,6 +441,52 @@ const parseJsonLoose = kitParse;
 async function askClaude(imagesB64, prompt, maxTokens = 4000) {
   return parseJsonLoose(await kitAI([...imagesB64.map(d => ({ mime: 'image/jpeg', b64: d })), prompt], { key: S.aiKey, model: S.aiModel, maxTokens }));
 }
+/* ---------- Belles images en ligne (sans clé) ---------- */
+// Livres, BD, mangas : Open Library (grande taille) puis Google Books en haute définition.
+// Films, jeux vidéo, jeux de société, musique, figurines… : image principale de l'article Wikipédia (fr puis en),
+// et pochette iTunes pour la musique. Une image n'est retenue que si elle se charge et fait au moins 200 px.
+const imgOK = (src, min = 200) => new Promise(res => { if (!src) return res(false); const i = new Image(); i.referrerPolicy = 'no-referrer'; const t = setTimeout(() => res(false), 7000); i.onload = () => { clearTimeout(t); res(Math.max(i.naturalWidth, i.naturalHeight) >= min); }; i.onerror = () => { clearTimeout(t); res(false); }; i.src = src; });
+const gbBig = u => String(u || '').replace('http:', 'https:').replace('&edge=curl', '').replace(/&zoom=\d/, '') + '&fife=w800';
+const WIKI_HINT = { film: 'film', jeu_video: 'jeu vidéo', jeu_societe: 'jeu de société', musique: 'album', lego: 'LEGO', figurine: 'figurine', bd: 'bande dessinée', manga: 'manga', livre: 'livre' };
+const wordsOf = t => norm(t).split(/[^a-z0-9]+/).filter(w => w.length > 2);
+async function wikiImage(c) {
+  const q = [c.title, c.series && !norm(c.title).includes(norm(c.series)) ? c.series : '', WIKI_HINT[c.type] || ''].filter(Boolean).join(' ');
+  for (const lang of ['fr', 'en']) {
+    try {
+      const u = `https://${lang}.wikipedia.org/w/api.php?action=query&format=json&origin=*&generator=search&gsrsearch=${encodeURIComponent(q)}&gsrlimit=3&prop=pageimages&piprop=thumbnail&pithumbsize=800&pilicense=any`;
+      const pages = Object.values((await (await fetch(u)).json()).query?.pages || {}).sort((a, b) => a.index - b.index);
+      const want = wordsOf(c.title);
+      for (const p of pages) {
+        const shared = wordsOf(p.title).filter(w => want.includes(w)).length;
+        if (p.thumbnail?.source && shared >= Math.min(2, want.length) && !/logo|\.svg/i.test(p.thumbnail.source) && await imgOK(p.thumbnail.source)) return p.thumbnail.source;
+      }
+    } catch { }
+  }
+  return '';
+}
+async function findCover(c) {
+  const book = /^(livre|bd|manga)$/.test(c.type || '');
+  const isbn = cleanCode(c.isbn);
+  if (book && isbn && isBookCode(isbn)) {
+    const ol = `https://covers.openlibrary.org/b/isbn/${isbn.length === 10 ? isbn10to13(isbn) : isbn}-L.jpg?default=false`;
+    if (await imgOK(ol, 300)) return ol;
+  }
+  if (book && c.title) {
+    try {
+      const q = isbn ? `isbn:${isbn}` : `intitle:${c.title}${c.creators ? ' inauthor:' + c.creators.split(',')[0] : ''}`;
+      const items = (await (await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=3`)).json()).items || [];
+      for (const v of items) { const il = v.volumeInfo?.imageLinks; const raw = il && (il.extraLarge || il.large || il.medium || il.thumbnail || il.smallThumbnail); if (raw && await imgOK(gbBig(raw), 250)) return gbBig(raw); }
+    } catch { }
+  }
+  if (c.type === 'musique' && c.title) {
+    try {
+      const r = (await (await fetch(`https://itunes.apple.com/search?entity=album&limit=3&term=${encodeURIComponent([c.creators, c.title].filter(Boolean).join(' '))}`)).json()).results || [];
+      for (const a of r) { const u = (a.artworkUrl100 || '').replace('100x100bb', '1000x1000bb'); if (u && await imgOK(u)) return u; }
+    } catch { }
+  }
+  return c.title ? wikiImage(c) : '';
+}
+
 function aiPrompt(multi) {
   const colls = data.collections.map(c => `${c.name} (${c.type})`).join(', ') || 'aucune pour le moment';
   const series = [...new Set(data.items.map(i => i.series).filter(Boolean))].slice(0, 120).join(' | ') || 'aucune';
@@ -749,6 +795,7 @@ function openItemForm(src, isNew = !getItem(src.id)) {
       <div class="btns" style="flex-direction:column;flex:1">
         <button class="btn ghost sm" id="cCam">📷 Prendre une photo</button>
         <button class="btn ghost sm" id="cGal">🖼️ Galerie</button>
+        <button class="btn ghost sm" id="cWeb">🌐 Belle image en ligne</button>
         <button class="btn ghost sm" id="cUrl">🔗 Image par URL</button>
         <button class="btn ghost sm" id="cAi">✨ Compléter via l'IA</button>
       </div></div>
@@ -782,6 +829,14 @@ function openItemForm(src, isNew = !getItem(src.id)) {
   };
   $('#cCam').onclick = async () => { const [file] = await pickImages({ camera: true }); if (file) setBlob(await canvasToBlob(drawScaled(await fileToImage(file), 900), 0.8)); };
   $('#cGal').onclick = async () => { const [file] = await pickImages(); if (file) setBlob(await canvasToBlob(drawScaled(await fileToImage(file), 900), 0.8)); };
+  $('#cWeb').onclick = async () => {
+    const b = $('#cWeb'); b.disabled = true; b.textContent = '⏳ Recherche…';
+    const coll = data.collections.find(x => x.id === $('#fColl')?.value);
+    const u = await findCover({ type: coll?.type || it.type || 'autre', title: $('#fTitle').value.trim(), creators: $('#fCreators').value.trim(), series: $('#fSeries').value.trim(), isbn: $('#fIsbn').value.trim() }).catch(() => '');
+    b.disabled = false; b.textContent = '🌐 Belle image en ligne';
+    if (!u) return toast('Aucune image trouvée : vérifie le titre, ou garde ta photo');
+    it.cover = { type: 'url', src: u }; newCoverBlob = null; setPreview(u); toast('Image trouvée ✓');
+  };
   $('#cUrl').onclick = () => { const u = prompt("URL de l'image :", it.cover?.type === 'url' ? it.cover.src : ''); if (u) { it.cover = { type: 'url', src: u.trim() }; newCoverBlob = null; setPreview(u.trim()); } };
   $('#cAi').onclick = async () => {
     let blob = newCoverBlob;
@@ -936,14 +991,12 @@ async function runAI(files, multi, opts) {
       const code = cleanCode(c.isbn); c.isbn = code;
       if (code && isBookCode(code)) {
         const r = await lookupISBN(code).catch(() => null);
-        if (r) { for (const k of ['title', 'creators', 'publisher', 'year', 'description', 'genre', 'subtitle']) if (!c[k] && r[k]) c[k] = r[k]; c._online = r.cover || ''; }
+        if (r) { for (const k of ['title', 'creators', 'publisher', 'year', 'description', 'genre', 'subtitle']) if (!c[k] && r[k]) c[k] = r[k]; }
       }
       if (!c.title && c.seen && (c.seen.match(/[A-Za-zÀ-ÿ]{3,}/g) || []).length >= 2 && /^(livre|bd|manga|)$/.test(c.type || '')) { // assez de mots lus pour une recherche fiable
         try { const j = await (await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(c.seen.slice(0, 120))}&maxResults=1`)).json(); const v = j.items?.[0]?.volumeInfo; if (v?.title) { c.title = v.title; c.creators ||= (v.authors || []).join(', '); c.publisher ||= v.publisher || ''; c.year ||= (v.publishedDate || '').slice(0, 4); c.type ||= 'livre'; c.confidence = Math.min(c.confidence ?? 0.4, 0.5); } } catch {}
       }
-      if (!c._online && /^(livre|bd|manga)$/.test(c.type) && c.title) {
-        try { const q = encodeURIComponent(`intitle:${c.title}${c.creators ? ' inauthor:' + c.creators.split(',')[0] : ''}`); const j = await (await fetch(`https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=1`)).json(); const il = j.items?.[0]?.volumeInfo?.imageLinks; if (il) c._online = (il.thumbnail || il.smallThumbnail).replace('http:', 'https:').replace('&edge=curl', ''); } catch {}
-      }
+      if (c.title) { $('#aiStep').textContent = 'Recherche de belles images…'; const u = await findCover(c).catch(() => ''); if (u) c._online = u; }
       const multiPhoto = cands.filter(o => o._img === c._img).length > 1;
       c._crop = multiPhoto && Array.isArray(c.bbox) && c.bbox.length === 4;
       c._photoBlob = await canvasToBlob(drawScaled(c._img, 900, c._crop ? c.bbox : null), 0.8);
@@ -1152,8 +1205,8 @@ function openImport() {
       if (!findDuplicate(it, [...data.items, ...list])) list.push(it);
     }
     if ($('#iCovers').checked) {
-      const need = list.filter(i => i.isbn && isBookCode(i.isbn)).slice(0, 300);
-      for (let k = 0; k < need.length; k++) { $('#iMsg').textContent = `Couvertures : ${k + 1}/${need.length}…`; const r = await lookupISBN(need[k].isbn).catch(() => null); if (r?.cover) need[k].cover = { type: 'url', src: r.cover }; }
+      const need = list.filter(i => i.title).slice(0, 300);
+      for (let k = 0; k < need.length; k++) { $('#iMsg').textContent = `Belles images : ${k + 1}/${need.length}…`; const i = need[k]; const ty = i.type || data.collections.find(c => c.id === (i.collectionId || i.collection))?.type || (i.isbn ? 'livre' : 'autre'); const u = await findCover({ ...i, type: ty }).catch(() => ''); if (u) i.cover = { type: 'url', src: u }; }
     }
     upsertItems(list); closeSheet(); render(); toast(`${list.length} objets importés (doublons ignorés)`);
   };
