@@ -524,7 +524,7 @@ async function coverCandidates(c, { max = 1, strict = true } = {}) {
   const done = () => out.length >= max;
   const book = /^(livre|bd|manga)$/.test(c.type || ''), want = wordsOf(c.title);
   let isbn = cleanCode(c.isbn), verified = false;
-  if (book && isbn && isBookCode(isbn)) { const v = await verifyIsbn(isbn, c); if (v === false) { c._badIsbn = isbn; isbn = ''; } else verified = v === true; }
+  if (book && isbn && isBookCode(isbn)) { if (c.isbnChecked) verified = true; else { const v = await verifyIsbn(isbn, c); if (v === false) { c._badIsbn = isbn; isbn = ''; } else verified = v === true; } } // isbnChecked : ISBN vérifié à la main ou sur une source fiable
   if (book && (!isbn || !verified) && c.title) { const f = await findIsbnByTitle(c); if (f) { isbn = f; verified = true; if (cleanCode(c.isbn) !== f) c._foundIsbn = f; } }
   const titleOk = t => { const shared = wordsOf(t).filter(w => want.includes(w)).length; return shared >= (strict ? Math.min(2, want.length) : 1) && (!strict || sameVolume(c.title, t)); };
   if (book && isbn && isBookCode(isbn) && (verified || !strict)) { // un ISBN non vérifié ne sert qu'au sélecteur
@@ -1112,6 +1112,7 @@ function openItemForm(src, isNew = !getItem(src.id)) {
     if (cid.startsWith('new:')) cid = newCollection(cid.slice(4)).id;
     const v = id => $('#' + id).value.trim();
     Object.assign(it, { collectionId: cid, title, subtitle: v('fSubtitle'), creators: v('fCreators'), series: v('fSeries'), volume: v('fVolume'), status: v('fStatus'), progress: v('fProgress'), isbn: cleanCode(v('fIsbn')),
+    if (cleanCode(v('fIsbn')) !== cleanCode(src.isbn || '')) it.isbnChecked = !!cleanCode(v('fIsbn')); // ISBN tapé ou corrigé à la main : on lui fait confiance
       publisher: v('fPublisher'), year: v('fYear'), format: v('fFormat'), genre: v('fGenre'), language: v('fLanguage'), condition: v('fCondition'), tags: v('fTags').split(',').map(s => s.trim()).filter(Boolean),
       location: v('fLoc'), copies: Math.max(1, parseInt(v('fCopies')) || 1), pricePaid: v('fPaid').replace(',', '.'), value: v('fValue').replace(',', '.'), acquiredAt: v('fAcq'), description: v('fDesc'), notes: v('fNotes') });
     if (it.status === 'possede' && isNew && !it.acquiredAt) it.acquiredAt = todayISO();
