@@ -459,7 +459,7 @@ async function wikiQuery(lang, params) {
   const u = `https://${lang}.wikipedia.org/w/api.php?action=query&format=json&origin=*&redirects=1&prop=pageimages&piprop=thumbnail|original&pithumbsize=800&pilicense=any&${params}`;
   return Object.values((await (await fetch(u)).json()).query?.pages || {}).sort((a, b) => (a.index || 0) - (b.index || 0));
 }
-const pageImg = p => { const u = p.thumbnail?.source || p.original?.source || ''; return /logo|\.svg|icon|wordmark/i.test(u) ? '' : u; };
+const pageImg = p => { const o = p.original?.source || '', small = p.original && Math.max(p.original.width || 0, p.original.height || 0) <= 1600; const u = (small ? o : p.thumbnail?.source) || o || ''; return /logo|\.svg|icon|wordmark|horizontal|banner|screenshot/i.test(u) ? '' : u; }; // image d'origine si elle est raisonnable (les vignettes recalculées sont parfois refusées)
 async function wikiImage(c) {
   // Le wiki anglais garde les jaquettes et affiches officielles (films, jeux, albums) ; le wiki français n'en a presque jamais.
   const langs = /^(film|jeu_video|musique|jeu_societe)$/.test(c.type) ? ['en', 'fr'] : ['fr', 'en'];
@@ -564,8 +564,23 @@ const io = 'IntersectionObserver' in window ? new IntersectionObserver(ents => {
 async function loadCover(el) {
   const it = getItem(el.dataset.cover) || el._item; if (!it?.cover) return;
   const u = await coverURL(it.cover); if (!u) return;
-  const img = new Image(); img.alt = ''; img.loading = 'lazy'; img.referrerPolicy = 'no-referrer';
+  const img = new Image(); img.alt = ''; img.referrerPolicy = 'no-referrer'; // pas de loading=lazy : une image hors page ne se charge jamais (l'observateur gère déjà le différé)
   img.onload = () => { const ph = el.querySelector('.ph'); if (ph) ph.replaceWith(img); };
+  img.onerror = () => healCover(it, u, el); // image en ligne disparue ou refusée : on en cherche une autre
+  img.src = u;
+}
+// Une image en ligne enregistrée ne s'affiche plus (fichier renommé sur Wikipédia, vignette refusée…) :
+// l'appli cherche une nouvelle image, une seule fois par objet et par session, et l'enregistre si elle en trouve une.
+const healed = new Set();
+async function healCover(it, badUrl, el) {
+  if (!it || it.cover?.type !== 'url' || healed.has(it.id) || !it.title) return;
+  healed.add(it.id);
+  const ty = data.collections.find(c => c.id === it.collectionId)?.type || 'autre';
+  const u = await findCover({ ...it, type: ty }).catch(() => '');
+  if (!u || u === badUrl) return;
+  it.cover = { type: 'url', src: u }; upsertItem(it);
+  const img = new Image(); img.alt = ''; img.referrerPolicy = 'no-referrer';
+  img.onload = () => { const ph = el?.querySelector('.ph'); if (ph) ph.replaceWith(img); };
   img.src = u;
 }
 function hydrateCovers(root = document) { for (const el of $$('.cover[data-cover]', root)) io ? io.observe(el) : loadCover(el); }
