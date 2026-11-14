@@ -110,26 +110,49 @@ function suggest(t) {
   return null;
 }
 function autoClassify(list) { let n = 0; for (const t of list) if (unclassified(t)) { const s = suggest(t); if (s) { t.category = s.category; t.tag = s.tag; t.auto = s.src; t.updatedAt = now(); n++; } } return n; }
-async function aiClassify() {
-  const ai = getAI(); if (!ai.key) return toast("Ajoute ta clé Gemini dans les réglages (⚙︎)");
-  const todo = D().transactions.filter(unclassified);
+// ⚡ Tout classer : règles + ce que l'appli a appris (sans IA), puis Gemini pour le reste, par lots de 120 libellés
+async function classifyAll() {
+  const before = D().transactions.filter(unclassified).length;
+  if (!before) return toast('Tout est déjà classé ✓');
+  const local = autoClassify(D().transactions);
+  if (local) store.save();
+  const ai = getAI();
+  if (!ai.key) { renderAll(); return toast(`${local} classée(s) par les règles. Ajoute ta clé Gemini (⚙︎) pour classer le reste`); }
+  const n = await aiClassify(true);
+  const left = D().transactions.filter(unclassified).length;
+  renderAll(); sound('success');
+  await new Promise(r => setTimeout(r, 400)); // laisse la fenêtre précédente se fermer
+  const body = openSheet('Classement terminé', `<div style="text-align:center;padding:6px">${bubble(left ? `J'ai rangé ${local + n} opération${local + n > 1 ? 's' : ''} sur ${before}. Il en reste ${left} : je te les montre une par une ?` : `Les ${before} opérations sont rangées !`)}</div>
+    <p class="k-hint" style="text-align:center">${local} par tes règles et ce que j'ai appris · ${n} par Gemini (libellés seuls, sans montant ni numéro). Repère ✨ sur les opérations classées par l'IA.</p>
+    ${left ? '<button class="k-btn block" id="cW">Finir en pas-à-pas</button>' : ''}`);
+  $('#cW', body) && ($('#cW', body).onclick = () => { closeSheet(); wizardMenu(); });
+}
+async function aiClassify(silent = false) {
+  const ai = getAI(); if (!ai.key) { toast("Ajoute ta clé Gemini dans les réglages (⚙︎)"); return 0; }
   // Confidentialité : seuls des libellés nettoyés partent chez Gemini.
   // Aucun montant, aucune date, aucun solde, aucun numéro (carte, compte, référence) : tout mot contenant un chiffre est retiré.
   const groups = new Map();
-  for (const t of todo) { const m = maskLabel(t.label); if (!m) continue; if (!groups.has(m)) groups.set(m, []); groups.get(m).push(t); }
-  const labels = [...groups.keys()].slice(0, 120);
-  if (!labels.length) return toast('Rien à classer');
-  const body = openSheet('Classement par l’IA', `<div class="k-spin"></div><p class="k-hint" style="text-align:center">${labels.length} libellés envoyés à Gemini, sans montant ni numéro…</p>`);
+  for (const t of D().transactions.filter(unclassified)) { const m = maskLabel(t.label); if (!m) continue; if (!groups.has(m)) groups.set(m, []); groups.get(m).push(t); }
+  const all = [...groups.keys()];
+  if (!all.length) { if (!silent) toast('Rien à classer'); return 0; }
+  const body = openSheet('Classement par l’IA', `<div class="k-spin"></div><p class="k-hint" style="text-align:center" id="aiMsg">${all.length} libellés à classer, envoyés sans montant ni numéro…</p>`);
+  let n = 0;
   try {
-    const txt = await aiAsk([`Tu classes des libellés de relevé bancaire français (montants et numéros retirés volontairement).\nCatégories autorisées : ${cats().join(', ')}.\nTags : Inévitable (dépense nécessaire), Évitable (dépense de confort), Non applicable (revenus, virements internes).\nRéponds UNIQUEMENT en JSON : {"items":[{"i":numéro de la ligne,"category":"…","tag":"…"}]}. Si tu ne sais pas, category "Divers".\nLibellés :\n${labels.map((l, i) => (i + 1) + '. ' + l).join('\n')}`], { maxTokens: 8000 });
-    const j = parseJsonLoose(txt);
-    let n = 0;
-    for (const x of j.items || []) {
-      const lab = labels[(+x.i || 0) - 1]; if (!lab || !cats().includes(x.category) || ![...TAGS].includes(x.tag)) continue;
-      for (const t of groups.get(lab)) { t.category = x.category; t.tag = x.tag; t.auto = 'ia'; t.updatedAt = now(); n++; }
+    for (let k = 0; k < all.length; k += 120) {
+      const labels = all.slice(k, k + 120);
+      const msg = $('#aiMsg', body); if (msg) msg.textContent = `Gemini classe ${Math.min(k + 120, all.length)} / ${all.length} libellés…`;
+      const txt = await aiAsk([`Tu classes des libellés de relevé bancaire français (montants et numéros retirés volontairement).\nCatégories autorisées : ${cats().join(', ')}.\nTags : Inévitable (dépense nécessaire), Évitable (dépense de confort), Non applicable (revenus, virements internes).\nRéponds UNIQUEMENT en JSON : {"items":[{"i":numéro de la ligne,"category":"…","tag":"…"}]}. Si tu ne sais pas, category "Divers".\nLibellés :\n${labels.map((l, i) => (i + 1) + '. ' + l).join('\n')}`], { maxTokens: 8000 });
+      const j = parseJsonLoose(txt);
+      for (const x of j.items || []) {
+        const lab = labels[(+x.i || 0) - 1]; if (!lab || !cats().includes(x.category) || ![...TAGS].includes(x.tag)) continue;
+        for (const t of groups.get(lab)) { t.category = x.category; t.tag = x.tag; t.auto = 'ia'; t.updatedAt = now(); n++; }
+      }
+      store.save();
     }
-    store.save(); closeSheet(); renderAll(); sound('success'); toast(`${n} opérations classées par l'IA ✨`);
-  } catch (e) { body.innerHTML = `<p>${esc(e.message)}</p>`; }
+    learn(); saveSettings();
+    if (!silent) { closeSheet(); renderAll(); sound('success'); toast(`${n} opérations classées par l'IA ✨`); } else closeSheet();
+  } catch (e) { if (n) { store.save(); learn(); saveSettings(); } body.innerHTML = `<p>${esc(e.message)}</p>${n ? `<p class="k-hint">${n} opération(s) déjà classée(s) avant l'erreur.</p>` : ''}`; if (silent) await new Promise(r => setTimeout(r, 2500)); }
+  return n;
 }
 
 /* ======================= Passerelle Paperasse ======================= */
@@ -197,7 +220,7 @@ async function importCSV() {
   const body = openSheet('Import terminé', `<div class="k-card"><b>${fresh.length} nouvelles opérations</b><div class="k-hint" style="margin-top:6px">✨ ${auto} classées automatiquement${linked ? `<br>📎 ${linked} reliées à un document de Paperasse` : ''}<br>${left ? `❓ ${left} à classer` : '✓ Tout est classé'}</div></div>
     <div class="k-btns">${left ? `<button class="k-btn" id="goW">Classer les ${left} restantes</button>` : ''}${left && getAI().key ? `<button class="k-btn ghost" id="goAI">✨ Demander à l'IA</button>` : ''}<button class="k-btn line" id="goOk">OK</button></div>`);
   $('#goW', body) && ($('#goW', body).onclick = () => startWizard('ALL'));
-  $('#goAI', body) && ($('#goAI', body).onclick = aiClassify);
+  $('#goAI', body) && ($('#goAI', body).onclick = () => { closeSheet(); classifyAll(); });
   $('#goOk', body).onclick = () => closeSheet();
 }
 
@@ -237,7 +260,7 @@ function renderDash() {
     : un.length ? `${un.length} opérations à classer (${eur(un.reduce((a, t) => a + (t.amount < 0 ? -t.amount : 0), 0))}). On s'y met ensemble ?`
     : s.solde >= 0 ? `Solde positif de ${eur(s.solde)} sur la période. Il reste des croquettes !` : `Attention, solde négatif de ${eur(s.solde)} sur la période.`;
   let h = bubble(esc(tip)) + periodSel();
-  if (un.length) h += `<div class="k-card" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b style="flex:1">❓ ${un.length} non classées</b><button class="k-btn sm" id="dW">Pas-à-pas</button>${getAI().key ? `<button class="k-btn sm ghost" id="dAI">✨ IA</button>` : ''}</div>`;
+  if (un.length) h += `<div class="k-card" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b style="flex:1">❓ ${un.length} non classées</b><button class="k-btn sm" id="dAI">⚡ Tout classer</button><button class="k-btn sm ghost" id="dW">Pas-à-pas</button></div>`;
   if (autoN) h += `<p class="k-hint">✨ ${autoN} opérations classées automatiquement — <a href="#" id="dCheck">les vérifier</a></p>`;
   h += `<div class="k-card"><div class="card-h"><h3>Inévitable vs évitable</h3><div class="seg" data-ch="tag"><button data-ty="doughnut" class="${chartTypes.tag === 'doughnut' ? 'on' : ''}">◔</button><button data-ty="bar" class="${chartTypes.tag === 'bar' ? 'on' : ''}">▥</button></div></div><div class="chart-box"><canvas id="cTag"></canvas></div></div>
     <div class="k-card"><div class="card-h"><h3>Par catégorie</h3><div class="seg" data-ch="cat"><button data-ty="doughnut" class="${chartTypes.cat === 'doughnut' ? 'on' : ''}">◔</button><button data-ty="bar" class="${chartTypes.cat === 'bar' ? 'on' : ''}">▥</button></div></div>
@@ -248,7 +271,7 @@ function renderDash() {
   $('#main').innerHTML = h;
   bindPeriod();
   $('#dW') && ($('#dW').onclick = () => startWizard(period === 'ALL' ? 'ALL' : period));
-  $('#dAI') && ($('#dAI').onclick = aiClassify);
+  $('#dAI') && ($('#dAI').onclick = classifyAll);
   $('#dCheck') && ($('#dCheck').onclick = e => { e.preventDefault(); startWizard(period, true); });
   $$('[data-ch] button').forEach(b => b.onclick = () => { chartTypes[b.parentNode.dataset.ch] = b.dataset.ty; sound('click'); renderDash(); });
   $$('[data-cat]').forEach(b => b.onclick = () => { const c = b.dataset.cat; hiddenCats.has(c) ? hiddenCats.delete(c) : hiddenCats.add(c); sound('click'); renderDash(); });
@@ -275,12 +298,14 @@ function drawCharts(s) {
 function renderOps() {
   const L = D().transactions.filter(t => (!filt.q || norm(t.label).includes(norm(filt.q))) && (filt.month === 'ALL' || t.date.startsWith(filt.month)) && (filt.tag === 'ALL' || (t.tag || 'Non défini') === filt.tag) && (filt.cat === 'ALL' || (t.category || 'Non défini') === filt.cat)).sort((a, b) => b.date.localeCompare(a.date));
   const total = L.reduce((a, t) => a + t.amount, 0);
-  $('#main').innerHTML = `<label class="k-search">🔎<input id="fq" value="${esc(filt.q)}" placeholder="Rechercher un libellé…"></label>
+  const unc = D().transactions.filter(unclassified).length;
+  $('#main').innerHTML = `${unc ? `<div class="k-card" style="display:flex;gap:8px;align-items:center"><b style="flex:1">❓ ${unc} non classée${unc > 1 ? 's' : ''}</b><button class="k-btn sm" id="oAI">⚡ Tout classer</button></div>` : ''}<label class="k-search">🔎<input id="fq" value="${esc(filt.q)}" placeholder="Rechercher un libellé…"></label>
     <div class="k-grid3"><select id="fm" class="k-chip"><option value="ALL">Tous les mois</option>${months().map(m => `<option value="${m}" ${filt.month === m ? 'selected' : ''}>${monthLbl(m)}</option>`).join('')}</select>
     <select id="ft" class="k-chip"><option value="ALL">Tous les tags</option>${[...TAGS, 'Non défini'].map(t => `<option ${filt.tag === t ? 'selected' : ''}>${t}</option>`).join('')}</select>
     <select id="fc" class="k-chip"><option value="ALL">Catégories</option>${[...cats(), 'Non défini'].map(c => `<option ${filt.cat === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></div>
     <p class="k-hint">${L.length} opération${L.length > 1 ? 's' : ''} · total ${eur(total)}</p>
     ${L.length ? `<div class="k-card flush">${L.slice(0, 400).map(txRow).join('')}</div>` : '<div class="k-empty">Aucune opération. Importe un relevé CSV avec ＋.</div>'}`;
+  $('#oAI') && ($('#oAI').onclick = classifyAll);
   const fq = $('#fq'); fq.oninput = () => { filt.q = fq.value; clearTimeout(fq._t); fq._t = setTimeout(() => { const p = fq.selectionStart; renderOps(); const n = $('#fq'); n.focus(); n.setSelectionRange(p, p); }, 250); };
   $('#fm').onchange = e => { filt.month = e.target.value; renderOps(); };
   $('#ft').onchange = e => { filt.tag = e.target.value; renderOps(); };
@@ -452,12 +477,13 @@ async function restore() {
 function addMenu() {
   const body = openSheet('Que veux-tu faire ?', `<div class="menu">
     <button data-m="csv"><span>📄</span><span>Importer un relevé CSV<small>Classement automatique inclus</small></span></button>
+    <button data-m="all"><span>✨</span><span>Tout classer automatiquement<small>Règles, ce que l'appli a appris, puis Gemini</small></span></button>
     <button data-m="wiz"><span>⚡</span><span>Pas-à-pas<small>Classer les opérations une par une</small></span></button>
     <button data-m="new"><span>✍️</span><span>Saisir une opération<small>Espèces, chèque…</small></span></button>
     <button data-m="cat"><span>🎨</span><span>Catégories<small>Ajouter, renommer, couleurs</small></span></button>
     <button data-m="bak"><span>💾</span><span>Exporter une sauvegarde</span></button>
     <button data-m="res"><span>📂</span><span>Restaurer une sauvegarde<small>Compatible avec l'ancienne appli</small></span></button></div>`);
-  $$('[data-m]', body).forEach(b => b.onclick = () => ({ csv: () => { closeSheet(); importCSV(); }, wiz: wizardMenu, new: () => editTx(null), cat: catsSheet, bak: backup, res: () => { closeSheet(); restore(); } })[b.dataset.m]());
+  $$('[data-m]', body).forEach(b => b.onclick = () => ({ csv: () => { closeSheet(); importCSV(); }, all: () => { closeSheet(); classifyAll(); }, wiz: wizardMenu, new: () => editTx(null), cat: catsSheet, bak: backup, res: () => { closeSheet(); restore(); } })[b.dataset.m]());
 }
 function settings() {
   openCommonSettings(`<div class="k-sec acc">Cha-cha</div><div class="k-field"><label>Réserve à garder chaque mois avant les achats (€)</label><input id="sC" type="number" value="${S().cushion || 0}"></div>`,
