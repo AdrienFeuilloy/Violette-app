@@ -191,7 +191,7 @@ main{position:relative;z-index:1}
 <div id="toast" class="toast"></div>
 
 <script type="module">
-import { initApp as kitInit, hero as kitHero, aiAsk as kitAI, AI_MODELS, AI_DEFAULT, logoutDevice as kitLogout, parseJsonLoose as kitParse, rocket as kitRocket } from './ui/kit.js';
+import { initApp as kitInit, hero as kitHero, aiAsk as kitAI, AI_MODELS, AI_DEFAULT, logoutDevice as kitLogout, parseJsonLoose as kitParse, rocket as kitRocket, setGH as kitSetGH, setAI as kitSetAI } from './ui/kit.js';
 kitInit('collections');
 
 /* =========================================================
@@ -234,14 +234,15 @@ const DEFAULT_SETTINGS = { owner: '', repo: '', branch: '', path: 'JSON_COLLECTI
 function loadSettings() {
   const s = { ...DEFAULT_SETTINGS, ...read(LS.settings, {}) };
   const shared = { ...(read('violette_github', {}) || {}), ...Object.fromEntries(Object.entries(read(LS.shared, {}) || {}).filter(([, v]) => v)) };
-  if (shared) for (const k of ['owner', 'repo', 'branch', 'token']) if (!s[k] && shared[k]) s[k] = shared[k];
+  if (shared) for (const k of ['owner', 'repo', 'branch', 'token']) if (shared[k]) s[k] = shared[k]; // réglages communs : toujours la version partagée
   if (!s.branch) s.branch = 'main';
   if (String(s.aiKey || '').startsWith('sk-ant')) s.aiKey = '';
   if (!String(s.aiModel || '').startsWith('gemini')) s.aiModel = AI_DEFAULT;
-  const ai = read('hub.ai', null); if (ai?.key && !s.aiKey) s.aiKey = ai.key; // clé IA partagée entre les apps
+  const ai = read('hub.ai', null); if (ai?.key) s.aiKey = ai.key; if (ai?.model) s.aiModel = ai.model; // clé IA partagée entre les apps
   return s;
 }
 let S = loadSettings();
+addEventListener('k-hubai', () => { S = loadSettings(); }); // clé Gemini reçue d'un autre appareil
 let ui = { view: 'grid', sort: 'recent', filter: 'all', q: '', lastCollection: '', lastStatus: 'possede', ...read(LS.ui, {}) };
 const saveUI = () => write(LS.ui, ui);
 
@@ -1531,7 +1532,7 @@ function openSettings() {
     <button class="btn ghost block" id="sLogout" style="margin-top:12px;color:#ff4f5e">Se déconnecter de cet appareil</button>
     <button class="btn danger block" id="sReset" style="margin-top:10px">Vider les données locales de cet appareil</button>`);
   const collect = () => ({ owner: $('#sOwner').value.trim(), repo: $('#sRepo').value.trim(), branch: $('#sBranch').value.trim() || 'main', path: $('#sPath').value.trim() || DEFAULT_SETTINGS.path, mediaDir: $('#sMedia').value.trim() || DEFAULT_SETTINGS.mediaDir, token: $('#sToken').value.trim(), aiKey: $('#sAiKey').value.trim(), aiModel: $('#sAiModel').value, hubUrl: $('#sHub').value.trim() || './index.html' });
-  const apply = () => { S = collect(); write(LS.settings, S); const sh = read(LS.shared, {}) || {}; write(LS.shared, { ...sh, owner: S.owner, repo: S.repo, branch: S.branch, token: S.token }); write('hub.ai', { key: S.aiKey, model: S.aiModel }); $('#hubLink').href = S.hubUrl; };
+  const apply = () => { S = collect(); write(LS.settings, S); kitSetGH({ owner: S.owner, repo: S.repo, branch: S.branch, token: S.token }); kitSetAI({ key: S.aiKey, model: S.aiModel }); $('#hubLink').href = S.hubUrl; };
   $('#sTest').onclick = async () => {
     apply(); if (!gh.ok()) return toast('Renseigne propriétaire, dépôt et jeton');
     try { const r = await fetch(`https://api.github.com/repos/${S.owner}/${S.repo}`, { headers: gh.h() }); if (!r.ok) throw new Error(await errMsg(r)); const j = await r.json(); const f = await gh.getText(S.path); toast(`✓ ${j.full_name}${j.private ? ' (privé)' : ''} — ${f ? 'fichier trouvé' : 'fichier créé à la 1re synchro'}`); }

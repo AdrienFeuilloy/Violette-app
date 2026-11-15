@@ -32,7 +32,8 @@ En bas de chaque appli, deux liens discrets : **✦ Visite guidée** (une série
 
 ### Ce qui est synchronisé, et ce qui reste sur l'appareil
 - **Dans le dépôt privé** : toutes les données de chaque appli, leurs réglages, et `JSON_HUB.json` (prénom, thème, sons, modèle IA, résumés affichés sur l'accueil). Un nouvel appareil retrouve tout après la saisie du jeton.
-- **Sur chaque appareil seulement** : le jeton GitHub (il sert à ouvrir le dépôt), la clé Gemini, et l'état d'affichage (onglet ouvert, filtres).
+- **Sur chaque appareil seulement** : le jeton GitHub (il sert à ouvrir le dépôt, à saisir une fois par appareil, dans n'importe quelle appli) et l'état d'affichage (onglet ouvert, filtres).
+- **La clé Gemini** est saisie une seule fois : elle est rangée dans `JSON_HUB.json` (dépôt privé, choix du 15/11) et suit sur tous les appareils.
 
 ## Jeton GitHub
 

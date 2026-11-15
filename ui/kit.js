@@ -58,14 +58,16 @@ let hubDoc = null;
 function hubSync() {
   if (hubDoc) return hubDoc;
   hubDoc = new DocSync({ key: 'hub.data.v1', path: 'JSON_HUB.json', label: 'Réglages communs', lists: ['summaries'],
-    empty: () => { const prefs = read('hub.prefs', {}) || {}; return { app: 'hub', schema: 1, settings: { prefs, aiModel: (read('hub.ai', {}) || {}).model || '' }, settingsAt: Object.keys(prefs).length ? now() : 0 }; },
+    empty: () => { const prefs = read('hub.prefs', {}) || {}; return { app: 'hub', schema: 1, settings: { prefs, aiModel: (read('hub.ai', {}) || {}).model || '', aiKey: (read('hub.ai', {}) || {}).key || '' }, settingsAt: Object.keys(prefs).length ? now() : 0 }; },
     onRemote: d => applyHubDoc(d) });
   return hubDoc;
 }
 function applyHubDoc(d) {
   const s = d.settings || {}, before = JSON.stringify(read('hub.prefs', {}) || {});
   write('hub.prefs', { ...(read('hub.prefs', {}) || {}), ...(s.prefs || {}) });
-  if (s.aiModel) write('hub.ai', { ...(read('hub.ai', {}) || {}), model: s.aiModel });
+  const keyBefore = (read('hub.ai', {}) || {}).key || '';
+  if (s.aiModel || s.aiKey) write('hub.ai', { ...(read('hub.ai', {}) || {}), ...(s.aiModel ? { model: s.aiModel } : {}), ...(s.aiKey ? { key: s.aiKey } : {}) }); // clé Gemini commune à tous les appareils (choix de l'utilisateur, dépôt privé)
+  if (((read('hub.ai', {}) || {}).key || '') !== keyBefore) dispatchEvent(new Event('k-hubai')); // clé arrivée d'un autre appareil
   let fresh = false;
   for (const s2 of d.summaries || []) { const loc = read('hub.summary.' + s2.id, null); if (!loc || (loc.at || 0) < (s2.updatedAt || 0)) { const { id, createdAt, updatedAt, ...rest } = s2; write('hub.summary.' + id, { ...rest, at: updatedAt }); fresh = true; } }
   if (JSON.stringify(read('hub.prefs', {}) || {}) !== before) { applyTheme(); dispatchEvent(new Event('k-hubprefs')); }
@@ -85,11 +87,12 @@ export function publishSummary(app, s) {
 }
 export function pushHubPrefs() {
   const d = hubSync();
-  d.data.settings = { prefs: read('hub.prefs', {}) || {}, aiModel: (read('hub.ai', {}) || {}).model || '' };
+  const ai = read('hub.ai', {}) || {};
+  d.data.settings = { prefs: read('hub.prefs', {}) || {}, aiModel: ai.model || '', aiKey: ai.key || '' };
   d.data.settingsAt = now(); d.save();
 }
 import { hasTour, startTour, tourCSS } from './tour.js';
-export const APP_VERSION = '2.8.0';
+export const APP_VERSION = '2.9.0';
 export function initApp(appId) {
   CURRENT_APP = appId;
   // Service worker commun à toutes les pages, vérifié à chaque ouverture (les mises à jour arrivent sans attendre)
@@ -307,8 +310,8 @@ export function getGH() {
 export function setGH(g) {
   const hub = read('hub.github', {}) || {};
   write('hub.github', { ...hub, ...g });
-  const vio = read('violette_github', null);
-  if (vio) write('violette_github', { ...vio, owner: g.owner, repo: g.repo, branch: g.branch, token: g.token });
+  const vio = read('violette_github', {}) || {};
+  write('violette_github', { ...vio, owner: g.owner, repo: g.repo, branch: g.branch, token: g.token }); // Violette lit sa propre copie
 }
 /* ---------- IA : Google Gemini, appelé directement depuis le téléphone ---------- */
 export const AI_MODELS = [['gemini-flash-latest', 'Gemini Flash — rapide (recommandé)'], ['gemini-pro-latest', 'Gemini Pro — le plus fin'], ['gemini-flash-lite-latest', 'Gemini Flash-Lite — économe']];
@@ -417,7 +420,7 @@ export async function aiAsk(parts, { key, model, maxTokens = 4000, json = true, 
   throw new Error(/overload|unavailable|503|réseau/i.test(m0) ? 'Gemini est saturé en ce moment, réessaie dans quelques minutes.' : m0);
 }
 
-export const setAI = a => write('hub.ai', { ...(read('hub.ai', {}) || {}), ...a });
+export const setAI = a => { write('hub.ai', { ...(read('hub.ai', {}) || {}), ...a }); try { pushHubPrefs(); } catch { } };
 export const ghReady = () => { const g = getGH(); return !!(g.owner && g.repo && g.token); };
 
 /* ---------- API GitHub (fichiers JSON) ---------- */

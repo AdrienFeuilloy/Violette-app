@@ -661,6 +661,9 @@ function save() {
 const DEFAULT_GH_PATH = "JSON_VIOLETTE.json";
 let gh = {};
 try { gh = JSON.parse(localStorage.getItem(LS.gh) || "null") || {}; } catch (e) {}
+// Réglages communs du hub (saisis une seule fois pour toutes les applis) : ils priment sur la copie de Violette
+try { const hub = JSON.parse(localStorage.getItem("hub.github") || "null") || {}; for (const k of ["owner", "repo", "branch", "token"]) if (hub[k]) gh[k] = hub[k]; } catch (e) {}
+const shareGH = () => { try { const hub = JSON.parse(localStorage.getItem("hub.github") || "null") || {}; localStorage.setItem("hub.github", JSON.stringify({ ...hub, owner: gh.owner || "", repo: gh.repo || "", branch: gh.branch || "main", token: gh.token || "" })); } catch (e) {} };
 const ghCfg = () => ({ owner: (gh.owner || "").trim(), repo: (gh.repo || "").trim(), branch: (gh.branch || "main").trim(), path: (gh.path || DEFAULT_GH_PATH).trim().replace(/^\/+/, ""), token: (gh.token || "").trim() });
 const ghReady = () => { const c = ghCfg(); return !!(c.owner && c.repo && c.token); };
 const SYNC = { busy: false, again: false, timer: null, lastOk: 0, err: "", state: "off" };
@@ -786,7 +789,7 @@ function fillGitHubFields() {
 
 window.testGitHub = async function() {
   gh = { owner: $("ghOwner").value.trim(), repo: $("ghRepo").value.trim(), branch: $("ghBranch").value.trim() || "main", path: $("ghPath").value.trim() || DEFAULT_GH_PATH, token: $("ghToken").value.trim() };
-  try { localStorage.setItem(LS.gh, JSON.stringify(gh)); } catch (e) {}
+  try { localStorage.setItem(LS.gh, JSON.stringify(gh)); } catch (e) {} shareGH();
   const info = $("ghInfo");
   if (!ghReady()) { info.textContent = "Renseigne au minimum le propriétaire, le dépôt et le jeton."; setSync("off"); return; }
   info.textContent = "Test en cours…";
@@ -810,7 +813,7 @@ window.testGitHub = async function() {
 window.disconnectGitHub = function() {
   if (!confirm("Retirer le jeton de cet appareil ? Les données restent ici et sur GitHub.")) return;
   gh = { ...gh, token: "" };
-  try { localStorage.setItem(LS.gh, JSON.stringify(gh)); } catch (e) {}
+  try { localStorage.setItem(LS.gh, JSON.stringify(gh)); } catch (e) {} shareGH();
   setSync("off"); fillGitHubFields(); toast("Appareil déconnecté de GitHub");
 };
 
@@ -2035,7 +2038,7 @@ window.saveSettings = function() {
   settings.validatedAge = getBabyAgeMonths();
   const g = { owner: $("ghOwner").value.trim(), repo: $("ghRepo").value.trim(), branch: $("ghBranch").value.trim() || "main", path: $("ghPath").value.trim() || DEFAULT_GH_PATH, token: $("ghToken").value.trim() };
   const ghChanged = stableStr(g) !== stableStr({ ...ghCfg(), branch: ghCfg().branch, path: ghCfg().path });
-  if (ghChanged) { gh = g; try { localStorage.setItem(LS.gh, JSON.stringify(gh)); } catch (e) {} }
+  if (ghChanged) { gh = g; try { localStorage.setItem(LS.gh, JSON.stringify(gh)); } catch (e) {} shareGH(); }
   save(); closeModal("settingsModal"); renderAll(); toast("Réglages enregistrés ✔");
   if (ghChanged) { if (ghReady()) syncNow(); else setSync("off"); }
 };
