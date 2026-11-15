@@ -9,6 +9,7 @@
  * - Aucune IA : la lecture se fait avec des règles simples.
  * - Seuls les mails dont l'OBJET parle de commande, colis, expédition ou livraison sont ouverts.
  * - Pas de doublon : un même numéro de commande ou de suivi met à jour la ligne existante.
+ * - Chaque ligne garde le lien vers ses mails (objet + date) pour les rouvrir depuis l'appli Colis.
  *
  * Mise en place : voir le tuto. En bref :
  *   1. Coller ce fichier dans un projet sur script.google.com
@@ -83,7 +84,8 @@ function lireMails_(since, seen) {
     const subject = m.getSubject();
     if (!SUJET_OK.test(subject)) return; // objet sans rapport avec une commande : le mail n'est pas ouvert
     const r = analyser({ subject, from: m.getFrom(), body: m.getPlainBody(), date: m.getDate() });
-    if (r) out.push(r);
+    // Lien vers le mail : ouvre Gmail directement sur ce message (rien d'autre du mail n'est copié)
+    if (r) { r.mail = { url: `https://mail.google.com/mail/u/0/#all/${id}`, subject: String(subject).slice(0, 90), date: Utilities.formatDate(m.getDate(), 'Europe/Paris', 'yyyy-MM-dd') }; out.push(r); }
   }));
   return out.sort((a, b) => a.at - b.at);
 }
@@ -188,6 +190,7 @@ function fusionner(data, found) {
       if (RANG[r.status] > (RANG[same.status] ?? 0)) { patch.status = r.status; if (r.status === 'recu') patch.gotAt = isoPlus_(r.at, 0); }
       for (const k of ['track', 'place', 'deadline', 'expected', 'order']) if (r[k] && !same[k]) patch[k] = r[k];
       if (r.status === 'retirer' && r.deadline && same.status !== 'recu') patch.deadline = r.deadline;
+      if (r.mail && !(same.mails || []).some(m => m.url === r.mail.url)) { patch.mails = [...(same.mails || []), r.mail].slice(-6); patch.mailUrl = r.mail.url; }
       if (Object.keys(patch).length) { Object.assign(same, patch, { updatedAt: now }); updated++; }
     } else {
       if (r.status === 'recu') continue; // déjà livré et jamais vu : inutile d'encombrer la liste
@@ -195,7 +198,7 @@ function fusionner(data, found) {
         id: 'm' + now.toString(36) + Math.random().toString(36).slice(2, 7),
         title: r.title, shop: r.shop, place: r.place, expected: r.expected, when: '', track: r.track,
         status: r.status, deadline: r.deadline, gotAt: '', price: '', forWho: '',
-        notes: '', order: r.order, source: 'mail', createdAt: now, updatedAt: now,
+        notes: '', order: r.order, source: 'mail', mailUrl: r.mail ? r.mail.url : '', mails: r.mail ? [r.mail] : [], createdAt: now, updatedAt: now,
       });
       added++;
     }

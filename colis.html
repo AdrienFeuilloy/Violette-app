@@ -96,6 +96,7 @@ function openItem(id) {
       ${x.notes ? `<p>${esc(x.notes)}</p>` : ''}
     </div>
     ${x.track ? `<a class="k-btn line block" href="${trackUrl(x.track)}" target="_blank" rel="noopener" style="margin-bottom:8px">🔎 Suivre le colis (${esc(k.name)})</a>` : ''}
+    ${(x.mails || []).length ? `<div class="k-sec" style="margin-top:4px">Mails reçus</div>${x.mails.slice().reverse().map(m => `<a class="k-btn ghost block" href="${esc(m.url)}" target="_blank" rel="noopener" style="margin-bottom:6px;text-align:left;justify-content:flex-start">✉︎ ${esc(m.subject || 'Ouvrir le mail')}<small style="opacity:.6;margin-left:auto">${m.date ? frDate(m.date, { day: 'numeric', month: 'short' }) : ''}</small></a>`).join('')}` : x.mailUrl ? `<a class="k-btn ghost block" href="${esc(x.mailUrl)}" target="_blank" rel="noopener" style="margin-bottom:8px">✉︎ Ouvrir le mail</a>` : ''}
     <div class="k-btns">
       ${x.status === 'route' ? `<button class="k-btn ghost" id="arrive">📍 Arrivé au relais</button>` : ''}
       ${x.status !== 'recu' ? `<button class="k-btn" id="got">✔ Récupéré</button>` : `<button class="k-btn ghost" id="reopen">↩︎ Pas encore reçu</button>`}
