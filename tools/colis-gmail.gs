@@ -44,6 +44,16 @@ function tester() {
   if (!PropertiesService.getScriptProperties().getProperty('GITHUB_TOKEN')) Logger.log('⚠️ GITHUB_TOKEN manquant dans les propriétés du script.');
 }
 
+/** Relit les mails des 30 derniers jours pour compléter les colis DÉJÀ dans l'appli (liens vers les mails, statut,
+ *  point relais…). Ne crée aucune ligne : un colis que tu as supprimé ne revient pas. */
+function rattraper() {
+  const token = PropertiesService.getScriptProperties().getProperty('GITHUB_TOKEN');
+  if (!token) throw new Error('Ajoute GITHUB_TOKEN dans Paramètres du projet → Propriétés du script.');
+  const found = lireMails_(Date.now() - 30 * 864e5, new Set());
+  Logger.log(`${found.length} mail(s) de colis relu(s) sur 30 jours.`);
+  if (found.length) ecrireDansColis_(found, token, { creer: false });
+}
+
 /** Arrête tout (supprime le déclencheur). */
 function desinstaller() {
   ScriptApp.getProjectTriggers().forEach(t => ScriptApp.deleteTrigger(t));
@@ -179,7 +189,7 @@ function isoPlus_(at, days) { const d = new Date(at + days * 864e5); return `${d
 
 const RANG = { route: 0, retirer: 1, recu: 2 };
 
-function fusionner(data, found) {
+function fusionner(data, found, { creer = true } = {}) {
   data.items = data.items || [];
   let added = 0, updated = 0;
   for (const r of found) {
@@ -193,7 +203,7 @@ function fusionner(data, found) {
       if (r.mail && !(same.mails || []).some(m => m.url === r.mail.url)) { patch.mails = [...(same.mails || []), r.mail].slice(-6); patch.mailUrl = r.mail.url; }
       if (Object.keys(patch).length) { Object.assign(same, patch, { updatedAt: now }); updated++; }
     } else {
-      if (r.status === 'recu') continue; // déjà livré et jamais vu : inutile d'encombrer la liste
+      if (!creer || r.status === 'recu') continue; // rattrapage : pas de création ; déjà livré et jamais vu : inutile d'encombrer la liste
       data.items.push({
         id: 'm' + now.toString(36) + Math.random().toString(36).slice(2, 7),
         title: r.title, shop: r.shop, place: r.place, expected: r.expected, when: '', track: r.track,
@@ -207,7 +217,7 @@ function fusionner(data, found) {
   return { added, updated };
 }
 
-function ecrireDansColis_(found, token) {
+function ecrireDansColis_(found, token, opts = {}) {
   const url = `https://api.github.com/repos/${CFG.owner}/${CFG.repo}/contents/${encodeURIComponent(CFG.path)}`;
   const headers = { Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' };
   for (let essai = 0; essai < 3; essai++) {
@@ -218,7 +228,7 @@ function ecrireDansColis_(found, token) {
       sha = j.sha;
       data = JSON.parse(Utilities.newBlob(Utilities.base64Decode(j.content.replace(/\n/g, ''))).getDataAsString('UTF-8'));
     } else if (g.getResponseCode() !== 404) throw new Error('GitHub (lecture) : ' + g.getResponseCode() + ' ' + g.getContentText().slice(0, 200));
-    const { added, updated } = fusionner(data, found);
+    const { added, updated } = fusionner(data, found, opts);
     if (!added && !updated) return;
     const body = { message: `Colis depuis Gmail : ${added} ajouté(s), ${updated} mis à jour`, branch: CFG.branch, content: Utilities.base64Encode(Utilities.newBlob(JSON.stringify(data, null, 1), 'application/json').getBytes()) };
     if (sha) body.sha = sha;
