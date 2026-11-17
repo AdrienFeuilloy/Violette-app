@@ -90,6 +90,7 @@ label.field{display:block;font-size:.76rem;font-weight:600;color:var(--muted);ma
 .fresh-flag{background:var(--bad);color:#fff;font-weight:700;font-size:.7rem;padding:3px 7px;border-radius:6px}
 .tag{background:var(--acc-soft);color:var(--acc);padding:2px 7px;border-radius:6px;font-size:.74rem;font-weight:600}
 .tag.warn{background:var(--warn-bg);color:var(--warn)}.tag.cook{background:var(--bad-bg);color:var(--bad)}
+.tag.ok{background:#dcf5e7;color:#14804a}html[data-theme=dark] .tag.ok{background:#173d2a;color:#7be0a7}
 .add-hint{color:var(--muted);font-size:.8rem}
 .alts{margin-top:8px}.alts summary{font-size:.78rem;font-weight:600;color:var(--acc);cursor:pointer}
 .alt-cat{font-size:.74rem;font-weight:600;color:var(--muted);margin:8px 0 4px}
@@ -286,6 +287,8 @@ hero(document.getElementById('hero'), {
           <option value="smart">Tri intelligent (Congel -> Utilisation)</option>
           <option value="name">Nom (A–Z)</option>
           <option value="qty">Quantité ↑</option>
+          <option value="last">Dernier repas (récent d'abord)</option>
+          <option value="oldest">Pas mangé depuis longtemps</option>
         </select>
       </div>
       <div id="stockList" style="overflow-x:auto"></div>
@@ -499,6 +502,7 @@ const toMealItem = (entry, defaultPots = 1) => {
   if (entry && typeof entry === "object") {
     const o = { name: entry.name || "", qtyPots: Math.max(1, Number(entry.qtyPots) || defaultPots) };
     if (entry.id != null && entry.id !== "") o.id = String(entry.id);
+    if (entry.taken) { o.taken = String(entry.taken); o.dPots = Math.max(0, Number(entry.dPots) || 0); } // repas pris : reste affiché, stock déjà retiré
     return o;
   }
   return null;
@@ -978,7 +982,7 @@ function linkPlansWith(p, list) {
     ALL_SLOT_KEYS.forEach(sl => {
       day[sl] = (day[sl] || []).map(x => {
         const it = toMealItem(x); if (!it) return x;
-        if (it.id == null) { const st = byName(it.name); if (st) return { id: String(st.id), name: st.name, qtyPots: it.qtyPots }; }
+        if (it.id == null) { const st = byName(it.name); if (st) return { ...it, id: String(st.id), name: st.name }; }
         return it;
       });
     });
@@ -1108,6 +1112,10 @@ window.renderStocks = function() {
     list.sort((a,b) => String(a.name).localeCompare(String(b.name),"fr"));
   } else if (sort === "qty") {
     list.sort((a,b) => (Number(a.qty)||0)-(Number(b.qty)||0));
+  } else if (sort === "last" || sort === "oldest") {
+    // jamais mangé = tout à la fin (récent d'abord) ou tout au début (pas mangé depuis longtemps)
+    const t = s => s.lastUsed ? Date.parse(s.lastUsed) || 0 : null;
+    list.sort((a, b) => { const A = t(a), B = t(b); if (A === B) return String(a.name).localeCompare(String(b.name), "fr"); if (A === null) return sort === "last" ? 1 : -1; if (B === null) return sort === "last" ? -1 : 1; return sort === "last" ? B - A : A - B; });
   } else {
     list = getSmartSortedStock(list);
   }
@@ -1345,6 +1353,7 @@ window.adjustMealItemQty = function(d, slot, idx, delta) {
 function renderItemRow(d, slot, idx, entry) {
   const item = toMealItem(entry);
   const s = findStock(item);
+  if (item.taken) return `<div class="mi taken" style="opacity:.6"><span class="mi-name"><b>${esc(s ? dispName(s) : item.name)}</b> <span class="tag ok">pris</span><small>${item.dPots ? `${potsTxt(item.dPots)} retiré${item.dPots > 1 ? "s" : ""} du stock` : "cuisiné frais"} · stock restant : ${s ? potsTxt(qtyOf(s)) : "?"}</small></span></div>`;
   const rm = `<button class="q-btn" onclick="removeItem('${d}','${slot}',${idx})" aria-label="Retirer du repas">×</button>`;
   if (!s) return `<div class="mi"><span class="mi-name">${esc(item.name)} <span class="tag warn">introuvable</span></span>${rm}</div>`;
   
@@ -1424,7 +1433,7 @@ window.renderMenus = function() {
   DAYS.forEach(([d]) => { if (!plans[d]) plans[d] = { breakfast: [], lunch: [], snack: [], dinner: [], fresh: [] }; });
   pruneFresh();
 
-  const countFresh = (d) => slots.reduce((m, k) => m + (plans[d][k] || []).filter(x => freshIn(d, k, x)).length, 0);
+  const countFresh = (d) => slots.reduce((m, k) => m + (plans[d][k] || []).filter(x => !x.taken && freshIn(d, k, x)).length, 0);
   const filled = DAYS.reduce((n, [d]) => n + slots.filter(k => (plans[d][k] || []).length).length, 0);
   const fresh = DAYS.reduce((n, [d]) => n + countFresh(d), 0);
 
@@ -1440,10 +1449,10 @@ window.renderMenus = function() {
       <summary class="day-sum"><span class="day-name">${dName}${di === todayIdx ? "<em>aujourd'hui</em>" : ""}</span><span class="day-badges"><span class="tag">${done}/${slots.length} repas</span>${fr ? `<span class="fresh-flag">🍳 ${fr}</span>` : ""}</span></summary>
       <div class="meals">${slots.map(slot => {
         const arr = plans[dKey][slot] || [];
-        return `<div class="slot"><div class="slot-head"><span class="slot-name">${SLOTS[slot]}</span><span style="display:flex;gap:6px">${arr.length ? `<button class="btn btn-primary sm" onclick="consumeMeal('${dKey}','${slot}')">✓ Repas pris</button>` : ""}<button class="btn btn-soft sm" onclick="openBuilder('${dKey}','${slot}')">Modifier</button></span></div>
+        return `<div class="slot"><div class="slot-head"><span class="slot-name">${SLOTS[slot]}</span><span style="display:flex;gap:6px">${arr.length ? (arr.every(x => x.taken) ? `<span class="tag ok">✓ Pris</span><button class="btn btn-gray sm" onclick="undoMeal('${dKey}','${slot}')" title="Annuler : remettre les pots en stock">↶</button>` : `<button class="btn btn-primary sm" onclick="consumeMeal('${dKey}','${slot}')">✓ Repas pris</button>`) + `<button class="btn btn-gray sm" onclick="dropMeal('${dKey}','${slot}')" title="Retirer de la vue sans toucher au stock">🗑</button>` : ""}<button class="btn btn-soft sm" onclick="openBuilder('${dKey}','${slot}')">Modifier</button></span></div>
           <div class="goal">Objectif : ${goalTxt(slot)}</div>
           ${arr.length ? arr.map((x, i) => renderItemRow(dKey, slot, i, x)).join("") : '<span class="add-hint">Repas vide</span>'}
-          ${renderAlts(dKey, slot)}</div>`;
+          ${arr.length && arr.every(x => x.taken) ? '' : renderAlts(dKey, slot)}</div>`;
       }).join("")}</div></details>`;
   }).join("");
 };
@@ -1476,11 +1485,25 @@ window.consumeMeal = function(d, slot) {
     const potsToDeduct = mi.forced ? 0 : Math.min(qtyOf(s), Math.max(1, Number(item.qtyPots) || 1));
     s.qty = qtyOf(s) - potsToDeduct;
     s.lastUsed = iso;
+    entry.__d = potsToDeduct;
   });
-  plans[d][slot] = [];
-  pruneFresh();
+  // Le repas reste visible dans la semaine, marqué « pris » (remarque du 16/11) : on garde la vue d'ensemble
+  plans[d][slot] = items.map(e => { const it = toMealItem(e); if (!it) return e; it.taken = iso; it.dPots = e.__d || 0; return it; });
   save(); renderAll();
-  toast("Repas validé : stocks et dates mis à jour ✔");
+  toast("Repas pris : stocks et dates mis à jour ✔");
+};
+// Annuler « repas pris » : les pots retirés reviennent dans le stock
+window.undoMeal = function(d, slot) {
+  (plans[d][slot] || []).forEach(e => { const it = toMealItem(e), s = findStock(it); if (s && e.dPots) s.qty = qtyOf(s) + e.dPots; });
+  plans[d][slot] = (plans[d][slot] || []).map(e => { const it = toMealItem(e); delete it.taken; delete it.dPots; return it; });
+  save(); renderAll(); toast("Repas remis à prendre, stock rétabli");
+};
+// Retirer le repas de la vue, sans toucher au stock
+window.dropMeal = function(d, slot) {
+  const arr = plans[d][slot] || [];
+  if (!arr.length) return;
+  if (!arr.every(e => e.taken) && !confirm("Retirer ce repas de la semaine sans le compter comme pris (le stock ne bouge pas) ?")) return;
+  plans[d][slot] = []; pruneFresh(); save(); renderMenus(); toast("Repas retiré de la vue");
 };
 window.removeItem = (d, slot, i) => { plans[d][slot].splice(i, 1); save(); renderMenus(); };
 
@@ -1864,7 +1887,7 @@ window.autoFillWeek = function() {
 
   // Stock déjà réservé par les repas existants
   DAYS.forEach(([d], di) => ALL_SLOTS.forEach(sl => (plans[d]?.[sl] || []).forEach(x => {
-    const item = toMealItem(x), s = findStock(item); if (!s) return;
+    const item = toMealItem(x), s = findStock(item); if (!s || item.taken) return; // déjà retiré du stock
     const pots = Math.ceil(mealInfo(d, sl, s, item.qtyPots).fromStock / unitOf(s) - 1e-9);
     rem.set(String(s.id), Math.max(0, rem.get(String(s.id)) - pots));
     vl.set(String(s.id), dates[di]);
