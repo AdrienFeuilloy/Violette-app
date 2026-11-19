@@ -92,7 +92,7 @@ export function pushHubPrefs() {
   d.data.settingsAt = now(); d.save();
 }
 import { hasTour, startTour, tourCSS } from './tour.js';
-export const APP_VERSION = '2.10.0';
+export const APP_VERSION = '2.11.0';
 export function initApp(appId) {
   CURRENT_APP = appId;
   // Service worker commun à toutes les pages, vérifié à chaque ouverture (les mises à jour arrivent sans attendre)

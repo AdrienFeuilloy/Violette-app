@@ -1020,7 +1020,7 @@ function collOptions(sel, { allowNew = false, newType = '' } = {}) {
   if (allowNew) h += Object.entries(TYPES).map(([k, t]) => `<option value="new:${k}" ${sel === 'new:' + k ? 'selected' : ''}>➕ Nouvelle : ${t.label}</option>`).join('');
   return h;
 }
-function openItemForm(src, isNew = !getItem(src.id)) {
+function openItemForm(src, isNew = !getItem(src.id), startBlob = null) {
   const it = structuredClone(src);
   let newCoverBlob = null, newCoverURL = null;
   const c = getColl(it.collectionId);
@@ -1063,6 +1063,8 @@ function openItemForm(src, isNew = !getItem(src.id)) {
   const setPreview = async url => { $('#fcov').innerHTML = `<div class="cover"><img src="${esc(url)}" alt="" referrerpolicy="no-referrer"></div>`; };
   if (it.cover && !getItem(it.id)) coverURL(it.cover).then(u => u && setPreview(u));
   const setBlob = blob => { newCoverBlob = blob; if (newCoverURL) URL.revokeObjectURL(newCoverURL); newCoverURL = URL.createObjectURL(blob); setPreview(newCoverURL); };
+  if (startBlob) setBlob(startBlob); // ajout rapide par photo sans IA
+  if (startBlob && isNew) setTimeout(() => $('#fTitle')?.focus(), 350);
   const fill = (o, overwrite = false) => {
     const map = { title: 'fTitle', subtitle: 'fSubtitle', creators: 'fCreators', series: 'fSeries', volume: 'fVolume', publisher: 'fPublisher', year: 'fYear', format: 'fFormat', genre: 'fGenre', language: 'fLanguage', description: 'fDesc', isbn: 'fIsbn' };
     for (const [k, id] of Object.entries(map)) { const el = $('#' + id); if (o[k] && (overwrite || !el.value.trim())) el.value = o[k]; }
@@ -1153,6 +1155,7 @@ function openAddMenu(preColl) {
       <button class="ai" id="mAi1"><span class="ic">📸</span><span><b>Photo → fiche (IA)</b><small>Prends l'objet en photo : titre, auteur, série, tome, éditeur… sont remplis automatiquement</small></span></button>
       <button class="ai" id="mAiN"><span class="ic">🗂️</span><span><b>Plusieurs objets d'un coup (IA)</b><small>Photo d'une étagère, d'une pile ou de tranches : une fiche par objet</small></span></button>
       <button class="ai" id="mAiG"><span class="ic">🖼️</span><span><b>Depuis la galerie (IA)</b><small>Une ou plusieurs photos existantes</small></span></button>
+      <button id="mPhoto"><span class="ic">📷</span><span><b>Photo sans IA</b><small>La photo devient l'image de la fiche, tu tapes juste le titre. Plusieurs photos depuis la galerie : une fiche par photo</small></span></button>
       <button id="mScan"><span class="ic">▦</span><span><b>Scanner des codes-barres</b><small>En rafale, comme Libib : ISBN → fiche + couverture</small></span></button>
       <button id="mManual"><span class="ic">✍️</span><span><b>Saisie manuelle</b><small>Remplir la fiche soi-même</small></span></button>
     </div>`);
@@ -1161,6 +1164,20 @@ function openAddMenu(preColl) {
   $('#mAiN').onclick = async () => { const o = opts(); const files = await pickImages({ camera: true }); if (files.length) runAI(files, true, o); };
   $('#mAiG').onclick = async () => { const o = opts(); const files = await pickImages({ multiple: true }); if (files.length) runAI(files, null, o); }; // chaque photo : l'IA détecte seule s'il y a un ou plusieurs objets
   $('#mScan').onclick = () => openScanner(opts());
+  $('#mPhoto').onclick = async () => {
+    const o = opts(), cid = o.coll || preColl || data.collections[0]?.id || '';
+    if (!cid) { toast('Crée d\'abord une collection'); return; }
+    const files = await pickImages({ multiple: true });
+    if (!files.length) return;
+    const blobs = [];
+    for (const f of files) { try { blobs.push(await canvasToBlob(drawScaled(await fileToImage(f), 900), 0.8)); } catch { } }
+    if (blobs.length === 1) return openItemForm({ ...blankItem(cid), status: o.status }, true, blobs[0]);
+    // plusieurs photos : une fiche « À nommer » par photo, à compléter ensuite (sélection multiple, ou ✨ Compléter (IA) si besoin)
+    const made = [];
+    for (let k = 0; k < blobs.length; k++) { const it = { ...blankItem(cid), status: o.status, title: `À nommer ${k + 1}`, tags: ['à nommer'] }; it.cover = await storeCoverBlob(it.id, blobs[k]); made.push(it); }
+    upsertItems(made); closeSheet(); toast(`${made.length} fiches créées avec leur photo : touche-les pour taper le titre`);
+    location.hash = '#/c/' + cid; render();
+  };
   $('#mManual').onclick = () => { const o = opts(); let cid = o.coll || data.collections[0]?.id || ''; openItemForm({ ...blankItem(cid), status: o.status }, true); };
 }
 
