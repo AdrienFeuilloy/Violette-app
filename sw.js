@@ -3,8 +3,8 @@
 // - Réseau d'abord (pour recevoir les mises à jour tout de suite), le cache sert de secours
 // - Chaque requête est rangée sous sa propre adresse (plus de mélange entre pages)
 // - Les appels externes (API GitHub, météo, IA, CDN) ne passent jamais par ici
-const CACHE = "gestion-v2.12.0";
-const PAGES = ["index", "violette", "habits", "animaux", "plantes", "budget", "paperasse", "garage", "colis", "collections", "cerveau"];
+const CACHE = "gestion-v2.11.1";
+const PAGES = ["index", "violette", "habits", "animaux", "plantes", "budget", "paperasse", "garage", "colis", "collections"];
 const SHELL = ["./", ...PAGES.map(p => `./${p}.html`), "./ui/kit.css", "./ui/kit.js", "./ui/docmask.js", "./ui/tour.js", "./passerelle-budget.js",
   "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
 

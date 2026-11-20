@@ -1,7 +1,7 @@
 {
   "name": "Gestion quotidien",
   "short_name": "Quotidien",
-  "description": "Le hub de la maison : Violette, Habits, Animaux, Plantes, Cha-cha, Paperasse, Garage, Colis, Collections, et le second cerveau.",
+  "description": "Le hub de la maison : Violette, Habits, Animaux, Plantes, Cha-cha, Paperasse, Garage, Colis, Collections.",
   "lang": "fr",
   "start_url": "./",
   "scope": "./",
@@ -10,50 +10,7 @@
   "background_color": "#f6f1e7",
   "theme_color": "#ff7a59",
   "icons": [
-    {
-      "src": "icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
-    }
-  ],
-  "share_target": {
-    "action": "./cerveau.html",
-    "method": "GET",
-    "params": {
-      "title": "title",
-      "text": "text",
-      "url": "url"
-    }
-  },
-  "shortcuts": [
-    {
-      "name": "Capturer une idée",
-      "short_name": "Capturer",
-      "url": "./cerveau.html?capture=1",
-      "icons": [
-        {
-          "src": "icon-192.png",
-          "sizes": "192x192"
-        }
-      ]
-    },
-    {
-      "name": "Second cerveau",
-      "short_name": "Cerveau",
-      "url": "./cerveau.html",
-      "icons": [
-        {
-          "src": "icon-192.png",
-          "sizes": "192x192"
-        }
-      ]
-    }
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
   ]
 }

@@ -34,15 +34,6 @@ const TOURS = {
     { sel: '.k-fab', title: 'Ajouter une plante', text: 'Nom, emplacement, comment la tailler et quand.' },
     { sel: '#set', title: 'Réglages', text: 'Le mois de l’engrais pour tout le jardin.' },
   ],
-  cerveau: [
-    { sel: '.k-hero .k-ring', title: 'Ton second cerveau', text: 'La boîte de réception, les tâches du jour, les projets en cours et toutes tes notes. Touche un rond pour y aller.' },
-    { sel: '.k-fab', title: 'Capturer', text: 'Le réflexe : une idée, une tâche, un lien ? Touche ＋ et note-le sans réfléchir. Depuis une autre appli, « Partager → Quotidien » fait pareil.' },
-    { sel: '#spheres', title: 'Perso, Salarié, PhantStudio', text: 'Filtre tout l’écran sur un domaine de ta vie, ou garde « Tout » pour une vue d’ensemble.' },
-    { sel: '[data-tab="projets"]', click: '[data-tab="projets"]', title: 'Projets et domaines', text: 'Un projet a un objectif et une fin ; un domaine dure toujours. La barre montre l’avancement des tâches.' },
-    { sel: '[data-tab="taches"]', click: '[data-tab="taches"]', title: 'Tâches', text: 'Toutes les cases à cocher de toutes tes notes, par échéance. Ajoute « 📅 date » dans une note pour lui donner une échéance.' },
-    { sel: '[data-tab="notes"]', click: '[data-tab="notes"]', title: 'Notes', text: 'Le rangement PARA : Boîte, Projets, Domaines, Ressources, Archives, plus le journal. Tout est en fichiers texte dans ton dépôt privé.' },
-    { sel: '#set', click: '[data-tab="today"]', title: 'Réglages', text: 'Le même jeton GitHub que les autres applis. Ici, tu peux aussi tout recharger depuis GitHub.' },
-  ],
   budget: [
     { sel: '.k-hero .k-ring', title: 'Le mois en un coup d’œil', text: 'Solde, revenus, dépenses inévitables et évitables de la période choisie.' },
     { sel: '#per', title: 'Période', text: 'Change de mois ou regarde l’année entière.' },
