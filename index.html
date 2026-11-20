@@ -79,7 +79,7 @@ function summaries() {
   out.push({ app: 'paperasse', line: soon.length ? `${soon.length} échéance${soon.length > 1 ? 's' : ''} sous 7 jours` : 'Rien d’urgent', alert: soon.some(x => x.days < 0) });
   if (soon[0]) urgent.push({ app: 'paperasse', title: soon[0].title, sub: `${soon[0].days < 0 ? 'en retard de ' + (-soon[0].days) + ' j' : soon[0].days === 0 ? "aujourd'hui" : 'dans ' + soon[0].days + ' j'}${soon[0].amount ? ' · ' + eur(soon[0].amount) : ''}`, date: soon[0].dueDate, k: 'Quête du jour' });
   // Budget, Garage, Colis : résumés publiés par les apps
-  for (const id of ['budget', 'garage', 'colis', 'animaux', 'plantes']) {
+  for (const id of ['budget', 'garage', 'colis', 'animaux', 'plantes', 'cerveau']) {
     const s = read('hub.summary.' + id, null);
     out.push({ app: id, line: s?.line || APPS.find(a => a.id === id).sub, alert: s?.alert });
     if (s?.urgent) urgent.push({ app: id, ...s.urgent });

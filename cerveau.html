@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="ui/kit.css">
+<title>Second cerveau</title>
+<style>
+.chipdot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:1px;flex:none}
+.k-chip.on .chipdot{background:#fff!important}
+.tk{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-top:1px solid var(--line)}
+.tk:first-child{border-top:0}
+.cb{flex:none;width:24px;height:24px;border-radius:8px;border:2px solid var(--acc);background:none;display:grid;place-items:center;color:#fff;font-size:14px;font-weight:800;padding:0;margin-top:1px}
+.tk.done .cb{background:var(--acc)}
+.tk.done .tx{text-decoration:line-through;color:var(--mut)}
+.tk .tx{flex:1;min-width:0;cursor:pointer}
+.tk .tx b{font-weight:600;font-size:14px;display:block}
+.tk .tx small{display:block;color:var(--mut);font-size:11.5px;margin-top:2px}
+.grp{font-weight:800;font-size:11px;color:var(--mut);margin:16px 4px 6px;text-transform:uppercase;letter-spacing:1.2px}
+.grp.bad{color:var(--bad)}
+.md{font-size:14.5px;line-height:1.55;overflow-wrap:anywhere}
+.md>:first-child{margin-top:0}
+.md h3,.md h4,.md h5{margin:16px 0 6px;line-height:1.25}
+.md h3{font-size:19px}.md h4{font-size:16px}.md h5{font-size:14.5px}
+.md p{margin:6px 0}
+.md ul,.md ol{margin:6px 0;padding-left:22px}
+.md blockquote{margin:8px 0;padding:6px 12px;border-left:3px solid var(--acc);background:var(--soft);border-radius:0 10px 10px 0}
+.md pre{background:var(--field);border:1px solid var(--line);border-radius:10px;padding:10px;overflow-x:auto;font-size:12.5px}
+.md code{background:var(--field);border-radius:5px;padding:1px 4px;font-size:.92em}
+.md pre code{background:none;padding:0}
+.md hr{border:0;border-top:1px solid var(--line);margin:14px 0}
+.md .tk{padding:4px 0;border:0}
+.md .cb{width:21px;height:21px;border-radius:7px;font-size:12px}
+.md .tk .tx{cursor:default}
+a[data-wl]{font-weight:600;text-decoration:none;border-bottom:1.5px dashed var(--acc);color:var(--acc)}
+a[data-wl].miss{opacity:.6}
+.tg{color:var(--acc);font-weight:600}
+.due{font-size:12px;font-weight:700;color:var(--mut);white-space:nowrap}
+.due.late{color:var(--bad)}
+.ed{width:100%;min-height:46dvh;border:1.5px solid var(--line);background:var(--field);border-radius:12px;padding:12px;font:14px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;resize:vertical;outline:none}
+.ed:focus,.cap:focus{border-color:var(--acc)}
+.tools{display:flex;gap:6px;overflow-x:auto;margin-bottom:8px;scrollbar-width:none}
+.tools::-webkit-scrollbar{display:none}
+.tools button{flex:none;border:1.5px solid var(--line);background:var(--card);border-radius:10px;padding:6px 10px;font-size:12.5px;font-weight:700}
+.cap{width:100%;min-height:118px;border:1.5px solid var(--line);background:var(--field);border-radius:14px;padding:12px;font-size:16px;outline:none;resize:vertical}
+.dest{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.dest button{border:1.5px solid var(--line);background:var(--card);border-radius:14px;padding:12px 10px;text-align:left;font-weight:700;font-size:13px}
+.dest button small{display:block;font-weight:500;color:var(--mut);font-size:11px;margin-top:2px}
+.dest button.on{border-color:var(--acc);background:var(--soft)}
+.pj .k-bar{margin-top:7px;height:5px}
+.para{margin-bottom:10px}
+.para summary{list-style:none;cursor:pointer}
+.para summary::-webkit-details-marker{display:none}
+.para[open] summary .chev{transform:rotate(90deg)}
+.chev{transition:transform .2s;color:var(--mut);font-size:18px}
+.rev{display:flex;gap:10px;align-items:center;padding:11px 12px;border-top:1px solid var(--line)}
+.rev:first-child{border-top:0}
+.rev .n{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:13px;background:var(--soft);color:var(--acc);flex:none}
+.rev .n.ok{background:rgba(20,160,107,.14);color:var(--ok)}
+.qadd{display:flex;gap:8px;margin-bottom:10px}
+.qadd input{flex:1;min-width:0;border:0;background:var(--card);box-shadow:var(--shadow);border-radius:14px;padding:12px;outline:none}
+.short{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.short button{border:0;background:var(--card);box-shadow:var(--shadow);border-radius:16px;padding:12px;text-align:left;font-weight:700;font-size:13.5px;display:flex;gap:10px;align-items:center}
+.short button small{display:block;font-weight:500;color:var(--mut);font-size:11px}
+.boxc .k-btns{margin-top:10px}
+.sub{font-size:11px;font-weight:700;color:var(--mut);padding:10px 12px 0;text-transform:uppercase;letter-spacing:1px}
+</style>
+</head>
+<body>
+<header id="hero"></header>
+<main class="k-wrap" id="main"></main>
+<script type="module">
+import { initApp, publishSummary, hero, read, write, esc, $, $$, now, todayISO, isISO, frDate, daysTo, norm, openSheet, closeSheet, toast, bubble, openCommonSettings, nav, getGH, ghReady, sound } from './ui/kit.js';
+initApp('cerveau');
+
+/* ==========================================================
+   Second cerveau — méthode PARA
+   Les notes sont de simples fichiers Markdown rangés dans le dossier Cerveau/
+   du dépôt privé : lisibles et modifiables tels quels (GitHub, Obsidian, éditeur de texte).
+   Synchro par l'API Git de GitHub : un commit par lot de modifications, fusion note par note.
+   ========================================================== */
+const ROOT = 'Cerveau';
+const KINDS = [
+  { id: 'boite', dir: '0-Boite', label: 'Boîte de réception', emo: '📥' },
+  { id: 'projet', dir: '1-Projets', label: 'Projets', emo: '🎯' },
+  { id: 'domaine', dir: '2-Domaines', label: 'Domaines', emo: '🧭' },
+  { id: 'ressource', dir: '3-Ressources', label: 'Ressources', emo: '📚' },
+  { id: 'archive', dir: '4-Archives', label: 'Archives', emo: '🗄️' },
+  { id: 'journal', dir: 'Journal', label: 'Journal', emo: '📓' },
+];
+const KIND = id => KINDS.find(k => k.id === id);
+const SPHERES = [{ id: 'Perso', color: '#22b35e' }, { id: 'Salarié', color: '#2f86ff' }, { id: 'PhantStudio', color: '#ff7a1f' }];
+const sphereColor = s => SPHERES.find(x => x.id === s)?.color || '#8a8496';
+const STATUTS = [['actif', 'Actifs'], ['en pause', 'En pause'], ['terminé', 'Terminés']];
+const PROJ_BODY = '## Objectif\n\n\n## Tâches\n- [ ] \n\n## Notes\n';
+const TASK = /^(\s*)[-*+] \[([ xX])\] ?(.*)$/;
+
+/* ---------- Petits outils ---------- */
+const today = () => todayISO();
+const addDays = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return todayISO(d); };
+const nextMonday = () => { const d = new Date(today() + 'T12:00:00'); d.setDate(d.getDate() + ((8 - d.getDay()) % 7 || 7)); return todayISO(d); };
+const escRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const unesc = s => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
+const plural = (n, s, p = s + 's') => `${n} ${n > 1 ? p : s}`;
+const dueLabel = iso => { const n = daysTo(iso); return n === 0 ? "aujourd'hui" : n === 1 ? 'demain' : n === -1 ? 'hier' : n < 0 ? `en retard de ${-n} j` : n < 7 ? new Date(iso + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long' }) : frDate(iso, { day: 'numeric', month: 'short' }); };
+const plain = s => String(s || '').replace(/\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|([^\]]+))?\]\]/g, (m, a, b) => b || a).replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/[📅✅]\s*\d{4}-\d{2}-\d{2}/gu, '').replace(/[*`]/g, '').replace(/\s+/g, ' ').trim();
+const cleanTitle = s => String(s || '').replace(/[\\/:*?"<>|#^[\]]/g, ' ').replace(/^[.\s]+/, '').replace(/\s+/g, ' ').trim().slice(0, 80).trim();
+function firstLine(text) {
+  const l = String(text || '').split('\n').map(x => x.replace(TASK, '$3').replace(/^#+\s*/, '').trim()).find(Boolean) || '';
+  const p = plain(l).replace(/https?:\/\/(www\.)?/, '');
+  return p.length > 60 ? p.slice(0, 60).replace(/\s+\S*$/, '') + '…' : p;
+}
+
+/* ---------- Chemins ---------- */
+const isNotePath = p => p.startsWith(ROOT + '/') && p.endsWith('.md');
+const segs = p => p.slice(ROOT.length + 1).split('/');
+const kindOf = p => { const s = segs(p); return s.length > 1 ? (KINDS.find(k => k.dir === s[0])?.id || 'autre') : 'autre'; };
+const subOf = p => segs(p).slice(1, -1).join(' / ');
+const titleOf = p => p.split('/').pop().replace(/\.md$/i, '');
+const folderOf = p => p.split('/').slice(0, -1).join('/');
+const dirOf = kind => `${ROOT}/${KIND(kind).dir}`;
+function uniquePath(dir, title, except) {
+  title = cleanTitle(title) || 'Sans titre';
+  let p = `${dir}/${title}.md`, i = 2;
+  while (notes[p] && p !== except) p = `${dir}/${title} (${i++}).md`;
+  return p;
+}
+
+/* ---------- En-tête YAML (front matter, compatible Obsidian) ---------- */
+const unq = s => /^"(.*)"$/.test(s) ? (() => { try { return JSON.parse(s); } catch { return s.slice(1, -1); } })() : /^'(.*)'$/.test(s) ? s.slice(1, -1) : s;
+function parse(text) {
+  const m = /^---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/.exec(text);
+  if (!m) return { fm: {}, order: [], body: text.replace(/^(\r?\n)+/, '') };
+  const fm = {}, order = []; let last = null;
+  for (const line of m[1].split(/\r?\n/)) {
+    const kv = /^([\p{L}\p{N}_-]+):\s*(.*)$/u.exec(line);
+    if (kv) { last = kv[1]; order.push(last); let v = kv[2].trim(); fm[last] = /^\[.*\]$/.test(v) ? v.slice(1, -1).split(',').map(s => unq(s.trim())).filter(Boolean) : unq(v); continue; }
+    const li = /^\s*-\s+(.*)$/.exec(line);
+    if (li && last) { if (!Array.isArray(fm[last])) fm[last] = fm[last] ? [fm[last]] : []; fm[last].push(unq(li[1].trim())); }
+  }
+  return { fm, order, body: text.slice(m[0].length).replace(/^(\r?\n)+/, '') };
+}
+function build(fm, body, order = []) {
+  const keys = [...new Set([...order, ...Object.keys(fm)])].filter(k => { const v = fm[k]; return v !== undefined && v !== null && v !== '' && !(Array.isArray(v) && !v.length); });
+  const q = s => { s = String(s); return /^[\p{L}\p{N} ._+()-]*$/u.test(s) && !/^\s|\s$/.test(s) && !/^(true|false|null|yes|no|~)$/i.test(s) ? s : JSON.stringify(s); };
+  const fmt = v => Array.isArray(v) ? '[' + v.map(q).join(', ') + ']' : isISO(v) ? v : q(v);
+  body = String(body || '').replace(/^(\r?\n)+/, '');
+  return keys.length ? `---\n${keys.map(k => `${k}: ${fmt(fm[k])}`).join('\n')}\n---\n\n${body}` : body;
+}
+
+/* ==========================================================
+   Stockage local + synchro GitHub (API Git)
+   notes : { chemin: { text, sha (version GitHub connue), dirty, v, at } }
+   ========================================================== */
+const NKEY = 'cerveau.notes.v1', MKEY = 'cerveau.sync';
+let notes = read(NKEY, {}) || {};
+const meta = Object.assign({ head: null, tree: null, last: 0, dirty: false, deleted: {}, seeded: false }, read(MKEY, {}) || {});
+function persist() {
+  meta.dirty = Object.values(notes).some(n => n.dirty) || Object.keys(meta.deleted).length > 0;
+  write(NKEY, notes); write(MKEY, meta);
+}
+function createNote(p, text) {
+  const prev = meta.deleted[p]; delete meta.deleted[p];
+  notes[p] = { text, sha: prev || null, dirty: true, v: 1, at: now() };
+  persist(); schedule();
+  return p;
+}
+function saveNote(p, text) {
+  const n = notes[p]; if (!n) return createNote(p, text);
+  if (n.text === text) return p;
+  n.text = text; n.dirty = true; n.v = (n.v || 0) + 1; n.at = now();
+  persist(); schedule();
+  return p;
+}
+function deleteNote(p) {
+  const n = notes[p]; if (!n) return;
+  if (n.sha) meta.deleted[p] = n.sha;
+  delete notes[p]; persist(); schedule();
+}
+function moveNote(from, to) {
+  if (from === to || !notes[from]) return from;
+  const text = notes[from].text;
+  deleteNote(from); createNote(to, text);
+  const a = titleOf(from), b = titleOf(to);
+  if (a !== b) relink(a, b);
+  return to;
+}
+// Un renommage met à jour les [[liens]] des autres notes (comme Obsidian)
+function relink(a, b) {
+  const re = new RegExp('\\[\\[' + escRe(a) + '(?=\\]\\]|\\||#)', 'g');
+  for (const [p, n] of Object.entries(notes)) if (re.test(n.text)) { re.lastIndex = 0; saveNote(p, n.text.replace(re, '[[' + b)); } else re.lastIndex = 0;
+}
+function setFm(p, patch) {
+  const n = notes[p]; if (!n) return;
+  const { fm, order, body } = parse(n.text);
+  saveNote(p, build({ ...fm, ...patch }, body, order));
+}
+
+/* ---------- API GitHub ---------- */
+const API = () => { const g = getGH(); return `https://api.github.com/repos/${encodeURIComponent(g.owner)}/${encodeURIComponent(g.repo)}`; };
+async function gh(path, opt = {}) {
+  const r = await fetch(API() + path, { method: opt.method || 'GET', body: opt.body ? JSON.stringify(opt.body) : undefined, cache: 'no-store',
+    headers: { Authorization: 'Bearer ' + getGH().token, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', ...(opt.body ? { 'Content-Type': 'application/json' } : {}) } });
+  if (!r.ok) {
+    let m = ''; try { m = (await r.json()).message || ''; } catch { }
+    const e = new Error(({ 401: 'Jeton invalide ou expiré', 403: 'Accès refusé par GitHub', 404: 'Dépôt ou branche introuvable' }[r.status] || 'Erreur GitHub ' + r.status) + (m ? ' (' + m + ')' : ''));
+    e.status = r.status; throw e;
+  }
+  return r.status === 204 ? null : r.json();
+}
+const b64d = s => { const bin = atob(String(s).replace(/\s/g, '')); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return new TextDecoder().decode(u); };
+async function blobSha(text) {
+  const enc = new TextEncoder(), body = enc.encode(text), head = enc.encode(`blob ${body.length}\0`);
+  const all = new Uint8Array(head.length + body.length); all.set(head); all.set(body, head.length);
+  return [...new Uint8Array(await crypto.subtle.digest('SHA-1', all))].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+async function remoteTree(commitSha) {
+  const c = await gh(`/git/commits/${commitSha}`);
+  const t = await gh(`/git/trees/${c.tree.sha}?recursive=1`);
+  const map = {};
+  for (const e of t.tree || []) if (e.type === 'blob' && isNotePath(e.path)) map[e.path] = e.sha;
+  return { map, treeSha: c.tree.sha };
+}
+async function fetchBlobs(list) {
+  const out = {}; let i = 0;
+  const worker = async () => { while (i < list.length) { const [p, sha] = list[i++]; const j = await gh(`/git/blobs/${sha}`); out[p] = j.encoding === 'base64' ? b64d(j.content) : j.content; } };
+  await Promise.all(Array.from({ length: Math.min(6, list.length) }, worker));
+  return out;
+}
+let conflicts = [];
+async function pull(remote) {
+  const need = [];
+  for (const [p, sha] of Object.entries(remote)) {
+    const n = notes[p];
+    if (!n) { if (meta.deleted[p] === sha) continue; delete meta.deleted[p]; need.push(p); continue; }
+    if (n.sha !== sha) need.push(p);
+  }
+  const texts = need.length ? await fetchBlobs(need.map(p => [p, remote[p]])) : {};
+  for (const p of need) {
+    const t = texts[p], sha = remote[p], n = notes[p];
+    if (!n) { notes[p] = { text: t, sha, dirty: false, v: 0, at: 0 }; continue; }
+    if (!n.dirty) { n.text = t; n.sha = sha; continue; }
+    if (n.text === t) { n.sha = sha; n.dirty = false; continue; }
+    // Modifiée des deux côtés : on garde les deux versions, rien n'est perdu
+    n.sha = sha;
+    const cp = uniquePath(folderOf(p), `${titleOf(p)} (autre appareil ${frDate(today(), { day: 'numeric', month: 'short' })})`);
+    notes[cp] = { text: t, sha: null, dirty: true, v: 1, at: now() };
+    conflicts.push(titleOf(p));
+  }
+  for (const p of Object.keys(notes)) if (!(p in remote)) { const n = notes[p]; if (n.sha && !n.dirty) delete notes[p]; else if (n.sha) n.sha = null; }
+  for (const p of Object.keys(meta.deleted)) if (!(p in remote)) delete meta.deleted[p];
+}
+let busy = false, again = false, timer = null, sstate = 'local', serr = '';
+function paint(s, err = '') {
+  sstate = s; serr = err;
+  const txt = { local: 'Local', pending: 'En attente', busy: 'Synchro…', ok: 'À jour', err: 'Erreur' }[s];
+  $$('[data-sync]').forEach(p => { p.className = 'k-pill ' + s; p.lastElementChild.textContent = txt; p.title = err || (meta.last ? 'Dernière synchro : ' + new Date(meta.last).toLocaleString('fr-FR') : ''); });
+}
+function schedule(ms = 1500) { clearTimeout(timer); if (!ghReady()) return paint('local'); paint('pending'); timer = setTimeout(sync, ms); }
+async function sync() {
+  if (!ghReady()) return paint('local');
+  if (busy) { again = true; return; }
+  busy = true; paint('busy'); conflicts = [];
+  try {
+    const branch = encodeURIComponent(getGH().branch);
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const ref = await gh(`/git/ref/heads/${branch}`);
+      const head = ref.object.sha;
+      let remote, treeSha;
+      if (head === meta.head && meta.tree && meta.treeSha) { remote = { ...meta.tree }; treeSha = meta.treeSha; }
+      else ({ map: remote, treeSha } = await remoteTree(head));
+      await pull(remote);
+      if (!meta.seeded) { if (!Object.keys(remote).length && !Object.keys(notes).some(isNotePath)) seed(); meta.seeded = true; }
+      const ch = [];
+      for (const [p, n] of Object.entries(notes)) if (n.dirty && isNotePath(p)) ch.push({ path: p, text: n.text, v: n.v });
+      for (const p of Object.keys(meta.deleted)) if (p in remote) ch.push({ path: p, del: true });
+      if (!ch.length) { meta.head = head; meta.tree = remote; meta.treeSha = treeSha; break; }
+      const tree = await gh('/git/trees', { method: 'POST', body: { base_tree: treeSha, tree: ch.map(c => c.del ? { path: c.path, mode: '100644', type: 'blob', sha: null } : { path: c.path, mode: '100644', type: 'blob', content: c.text }) } });
+      const msg = `Cerveau : ${plural(ch.length, 'note')} (${new Date().toLocaleString('fr-FR')})`;
+      const nc = await gh('/git/commits', { method: 'POST', body: { message: msg, tree: tree.sha, parents: [head] } });
+      try { await gh(`/git/refs/heads/${branch}`, { method: 'PATCH', body: { sha: nc.sha, force: false } }); }
+      catch (e) { if ([409, 422].includes(e.status) && attempt < 3) continue; throw e; } // un autre appareil a écrit entre-temps : on recommence
+      for (const c of ch) {
+        if (c.del) { delete remote[c.path]; delete meta.deleted[c.path]; continue; }
+        const sha = await blobSha(c.text); remote[c.path] = sha;
+        const n = notes[c.path]; if (n) { n.sha = sha; if (n.v === c.v) n.dirty = false; }
+      }
+      meta.head = nc.sha; meta.tree = remote; meta.treeSha = tree.sha;
+      break;
+    }
+    meta.last = now(); persist();
+    paint(meta.dirty ? 'pending' : 'ok');
+    if (meta.dirty) again = true;
+    if (conflicts.length) toast(`Modifiée sur deux appareils : ${conflicts[0]}. Les deux versions sont gardées.`);
+    render();
+  } catch (e) { console.error(e); persist(); paint('err', e.message); toast('Synchro GitHub : ' + e.message); render(); }
+  finally { busy = false; if (again) { again = false; schedule(400); } }
+}
+addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') sync(); else if (meta.dirty) { clearTimeout(timer); sync(); } });
+addEventListener('beforeunload', e => { if (meta.dirty && ghReady()) { e.preventDefault(); e.returnValue = ''; } });
+
+/* ---------- Structure de départ (créée une seule fois, si le dossier Cerveau/ n'existe pas) ---------- */
+function seed() {
+  const d = today(), N = (p, t) => { notes[`${ROOT}/${p}`] = { text: t, sha: null, dirty: true, v: 1, at: now() }; };
+  N('LISEZ-MOI.md', `# Mon second cerveau
+
+Tout ce qui me passe par la tête atterrit ici, puis je le range selon la méthode **PARA** :
+
+- **0-Boite** : la boîte de réception. On capture vite, sans réfléchir, et on trie plus tard.
+- **1-Projets** : ce qui a un objectif et une fin (« Refaire le site », « Préparer les impôts »).
+- **2-Domaines** : ce qui dure, sans date de fin : [[Perso]], [[Salarié]] et [[PhantStudio]].
+- **3-Ressources** : ce que je veux garder pour plus tard (idées, tutos, références, recettes).
+- **4-Archives** : les projets finis et ce qui ne sert plus, sans rien jeter.
+- **Journal** : une note par jour, quand j'en ai envie.
+
+## Les gestes du quotidien
+1. **Capturer** : le gros ＋, ou « Partager → Quotidien » depuis n'importe quelle appli du téléphone.
+2. **Trier** la boîte tous les jours ou deux : chaque élément va dans un projet, un domaine, les ressources, les archives ou la corbeille.
+3. **Agir** : l'écran « Aujourd'hui » montre les tâches du jour et en retard, tous domaines confondus.
+4. **Revoir** chaque semaine : boîte vide, une prochaine tâche par projet, projets finis archivés.
+
+## Écrire une note
+Ce sont de simples fichiers texte (Markdown) :
+- \`- [ ] Appeler le garage 📅 ${addDays(d, 5)}\` crée une tâche avec une échéance ;
+- \`[[Nom d'une note]]\` crée un lien vers une autre note ;
+- \`#idée\` ajoute une étiquette.
+
+Ils s'ouvrent aussi tels quels dans Obsidian ou n'importe quel éditeur de texte.
+`);
+  N('0-Boite/Bienvenue.md', build({ cree: d }, `Voici ta boîte de réception : tout ce que tu captures arrive ici, sans avoir à réfléchir où le ranger.
+
+Touche « Classer » pour essayer de ranger cette note… ou supprime-la, elle a fait son travail !
+`));
+  N('1-Projets/Mettre en place mon second cerveau.md', build({ type: 'projet', domaine: 'Perso', statut: 'actif', echeance: addDays(d, 14), cree: d }, `## Objectif
+Avoir un seul endroit fiable pour tout ce qui compte, entre vie perso, boulot et [[PhantStudio]].
+
+## Tâches
+- [ ] Capturer une idée depuis le téléphone avec « Partager → Quotidien » 📅 ${d}
+- [ ] Trier la boîte de réception 📅 ${addDays(d, 1)}
+- [ ] Créer un projet pour chaque chantier en cours (perso, boulot, PhantStudio) 📅 ${addDays(d, 3)}
+- [ ] Faire la première revue de la semaine 📅 ${addDays(d, 7)}
+- [ ] Brancher Obsidian sur le dépôt GitHub (plus tard)
+
+## Notes
+`));
+  const dom = (name, intro, items) => N(`2-Domaines/${name}.md`, build({ type: 'domaine', domaine: name, cree: d }, `${intro}
+
+## À tenir
+${items.map(i => '- ' + i).join('\n')}
+
+## Tâches
+
+## Notes
+`));
+  dom('Perso', 'La vie de famille et la maison : idées, envies, choses à ne pas oublier.', ['Famille', 'Maison', 'Santé', 'Finances', 'Loisirs']);
+  dom('Salarié', 'Mon travail de salarié : ce que je dois suivre, les idées à proposer, les choses à ne pas oublier.', ['Missions en cours', 'Réunions et suivis', 'Montée en compétences']);
+  dom('PhantStudio', "Mon activité d'illustration et d'identité graphique : clients, site, communication.", ['Clients et devis', 'Site et portfolio', 'Réseaux sociaux', 'Idées de créations']);
+  persist();
+}
+
+/* ==========================================================
+   Lecture des notes
+   ========================================================== */
+function info(path) {
+  const n = notes[path], { fm, order, body } = parse(n.text);
+  const kind = kindOf(path);
+  const stamp = Math.max(n.at || 0, Date.parse(fm.modifie || fm.cree || '') || 0, kind === 'journal' && isISO(titleOf(path)) ? Date.parse(titleOf(path)) : 0);
+  return { path, title: titleOf(path), kind, sub: subOf(path), fm, order, body, dom: SPHERES.some(s => s.id === fm.domaine) ? fm.domaine : '', stamp };
+}
+function tasksOf(x) {
+  const out = [];
+  notes[x.path].text.split('\n').forEach((l, i) => {
+    const m = TASK.exec(l); if (!m) return;
+    const rest = m[3], due = (/📅\s*(\d{4}-\d{2}-\d{2})/u.exec(rest) || [])[1] || '', doneAt = (/✅\s*(\d{4}-\d{2}-\d{2})/u.exec(rest) || [])[1] || '';
+    const text = rest.replace(/[📅✅⏳🛫]\s*\d{4}-\d{2}-\d{2}/gu, '').replace(/\s+/g, ' ').trim();
+    if (text) out.push({ path: x.path, line: i, raw: l, done: m[2] !== ' ', text, due, doneAt, note: x });
+  });
+  return out;
+}
+function buildIndex() {
+  const idx = Object.keys(notes).filter(isNotePath).map(info);
+  return {
+    idx, tasks: idx.filter(x => x.kind !== 'archive').flatMap(tasksOf),
+    box: idx.filter(x => x.kind === 'boite').sort((a, b) => b.stamp - a.stamp),
+    projs: idx.filter(x => x.kind === 'projet'), doms: idx.filter(x => x.kind === 'domaine'),
+  };
+}
+const byTitle = (a, b) => a.title.localeCompare(b.title, 'fr');
+const findByTitle = t => { const k = norm(t), ps = Object.keys(notes).filter(p => isNotePath(p) && norm(titleOf(p)) === k); return ps.find(p => kindOf(p) !== 'archive') || ps[0]; };
+const backlinks = x => buildIndex().idx.filter(y => y.path !== x.path && new RegExp('\\[\\[' + escRe(x.title) + '(\\]\\]|\\||#)', 'i').test(notes[y.path].text));
+function excerpt(x) {
+  const l = x.body.split('\n').map(s => s.trim()).find(s => s && !/^#/.test(s) && !TASK.test(s) && !/^[-*]\s*$/.test(s));
+  return l ? plain(l.replace(/^[-*+>]\s+/, '')).slice(0, 110) : '';
+}
+function toggleLine(path, idx, raw) {
+  const n = notes[path]; if (!n) return;
+  const L = n.text.split('\n'); const i = L[idx] === raw ? idx : L.indexOf(raw);
+  if (i < 0) { toast('La note a changé, réessaie'); return; }
+  const m = TASK.exec(L[i]); if (!m) return;
+  const done = m[2] !== ' ';
+  L[i] = done ? L[i].replace(/\[[xX]\]/, '[ ]').replace(/\s*✅\s*\d{4}-\d{2}-\d{2}/u, '') : L[i].replace('[ ]', '[x]').replace(/\s*$/, '') + ' ✅ ' + today();
+  saveNote(path, L.join('\n'));
+  return !done;
+}
+// Ajoute un bloc sous un titre « ## … » d'une note (créé à la fin s'il n'existe pas)
+function insertUnder(text, heading, block) {
+  const L = text.split('\n'), re = new RegExp('^#{1,6}\\s+' + escRe(heading) + '\\s*$', 'i');
+  const h = L.findIndex(l => re.test(l));
+  if (h < 0) { while (L.length && !L[L.length - 1].trim()) L.pop(); L.push('', '## ' + heading, block, ''); return L.join('\n'); }
+  let e = h + 1; while (e < L.length && !/^#{1,6}\s/.test(L[e])) e++;
+  let at = e; while (at > h + 1 && !L[at - 1].trim()) at--;
+  if (at > h + 1 && /^\s*[-*+] \[ \]\s*$/.test(L[at - 1])) L[at - 1] = block; // remplace la case vide du modèle
+  else L.splice(at, 0, block);
+  return L.join('\n');
+}
+function appendTo(path, { text, task, due }) {
+  const n = notes[path]; if (!n) return;
+  const lines = text.split('\n').map(s => s.trim()).filter(Boolean);
+  let block;
+  if (task) { const tl = lines.filter(l => TASK.test(l)); block = (tl.length ? tl : [`- [ ] ${lines.join(' — ')}`]).map(l => due && !/📅/u.test(l) ? `${l} 📅 ${due}` : l).join('\n'); }
+  else block = lines.length === 1 && !/^[-*+#>]/.test(lines[0]) ? `- ${lines[0]}` : text.trim();
+  saveNote(path, insertUnder(n.text, task ? 'Tâches' : 'Notes', block));
+}
+
+/* ---------- Affichage Markdown ---------- */
+function inline(s) {
+  let t = esc(s); const codes = [];
+  t = t.replace(/`([^`]+)`/g, (m, c) => `\u0000${codes.push(c) - 1}\u0000`)
+    .replace(/\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|([^\]]+))?\]\]/g, (m, a, b) => `<a href="#" data-wl="${a.trim()}" class="${findByTitle(unesc(a.trim())) ? '' : 'miss'}">${b || a}</a>`)
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+    .replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, (m, p, u) => `${p}<a href="${u}" target="_blank" rel="noopener">${u.length > 46 ? u.slice(0, 44) + '…' : u}</a>`)
+    .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/(^|[^*\w])\*([^*\s][^*]*?)\*(?!\w)/g, '$1<i>$2</i>')
+    .replace(/(^|\s)#([\p{L}\p{N}_/-]+)/gu, '$1<span class="tg">#$2</span>')
+    .replace(/📅\s*(\d{4}-\d{2}-\d{2})/gu, (m, d) => `<span class="due ${d < today() ? 'late' : ''}">📅 ${dueLabel(d)}</span>`)
+    .replace(/✅\s*(\d{4}-\d{2}-\d{2})/gu, (m, d) => `<span class="due">✅ ${frDate(d, { day: 'numeric', month: 'short' })}</span>`);
+  return t.replace(/\u0000(\d+)\u0000/g, (m, i) => `<code>${codes[i]}</code>`);
+}
+function md(src, offset = 0) {
+  const L = src.split('\n'); let h = '', para = [], list = null;
+  const fP = () => { if (para.length) { h += `<p>${para.map(inline).join('<br>')}</p>`; para = []; } };
+  const fL = () => { if (list) { h += `</${list}>`; list = null; } };
+  const oL = t => { if (list !== t) { fL(); h += `<${t}>`; list = t; } };
+  for (let i = 0; i < L.length; i++) {
+    const l = L[i]; let m;
+    if (/^\s*```/.test(l)) { fP(); fL(); const c = []; i++; while (i < L.length && !/^\s*```/.test(L[i])) c.push(L[i++]); h += `<pre><code>${esc(c.join('\n'))}</code></pre>`; continue; }
+    if ((m = TASK.exec(l))) { fP(); fL(); const done = m[2] !== ' ', ind = Math.min(4, Math.floor(m[1].replace(/\t/g, '  ').length / 2)); h += `<div class="tk ${done ? 'done' : ''}" style="margin-left:${ind * 18}px"><button class="cb" data-tl="${offset + i}" aria-label="${done ? 'Rouvrir' : 'Cocher'}">${done ? '✓' : ''}</button><span class="tx">${inline(m[3]) || '&nbsp;'}</span></div>`; continue; }
+    if ((m = /^(#{1,6})\s+(.*)$/.exec(l))) { fP(); fL(); const n = Math.min(5, m[1].length + 2); h += `<h${n}>${inline(m[2])}</h${n}>`; continue; }
+    if ((m = /^\s*[-*+]\s+(.*)$/.exec(l))) { fP(); oL('ul'); h += `<li>${inline(m[1])}</li>`; continue; }
+    if ((m = /^\s*\d+[.)]\s+(.*)$/.exec(l))) { fP(); oL('ol'); h += `<li>${inline(m[1])}</li>`; continue; }
+    if ((m = /^>\s?(.*)$/.exec(l))) { fP(); fL(); h += `<blockquote>${inline(m[1])}</blockquote>`; continue; }
+    if (/^\s*([-*_])(\s*\1){2,}\s*$/.test(l)) { fP(); fL(); h += '<hr>'; continue; }
+    if (!l.trim()) { fP(); fL(); continue; }
+    fL(); para.push(l);
+  }
+  fP(); fL(); return h;
+}
+
+/* ==========================================================
+   Écrans
+   ========================================================== */
+const UI = read('cerveau.ui', {}) || {};
+let view = ['today', 'projets', 'taches', 'notes', 'boite'].includes(UI.view) ? UI.view : 'today';
+let sphere = UI.sphere || '', projFilter = 'actif', showDone = false, nq = '';
+const saveUI = () => { UI.view = view; UI.sphere = sphere; write('cerveau.ui', UI); };
+const inS = x => !sphere || x.dom === sphere;
+let TK = [];
+const dot = s => s ? `<span class="chipdot" style="background:${sphereColor(s)}"></span>` : '';
+const pill = () => `<button class="k-pill" data-sync type="button"><span class="dot"></span><span>Local</span></button>`;
+const sec = (t, link = '', go = '') => `<div class="k-sec">${esc(t)}${link ? `<a class="k-link" href="#" data-go="${go}">${esc(link)}</a>` : ''}</div>`;
+const spheresHTML = () => `<div class="k-chips" id="spheres">${[['', 'Tout'], ...SPHERES.map(s => [s.id, s.id])].map(([k, l]) => `<button class="k-chip ${sphere === k ? 'on' : ''}" data-sph="${esc(k)}">${dot(k)}${esc(l)}</button>`).join('')}</div>`;
+function taskRow(t, ctx = true) {
+  const i = TK.push(t) - 1, late = !t.done && t.due && t.due < today();
+  const bits = [t.due && !t.done ? `<span class="due ${late ? 'late' : ''}">📅 ${dueLabel(t.due)}</span>` : '', t.done && t.doneAt ? `✅ ${frDate(t.doneAt, { day: 'numeric', month: 'short' })}` : '', ctx ? dot(t.note.dom) + esc(t.note.title) : ''].filter(Boolean);
+  return `<div class="tk ${t.done ? 'done' : ''}"><button class="cb" data-tk="${i}" aria-label="${t.done ? 'Rouvrir' : 'Cocher'}">${t.done ? '✓' : ''}</button><div class="tx" data-open="${esc(t.path)}"><b>${inline(t.text)}</b>${bits.length ? `<small>${bits.join(' · ')}</small>` : ''}</div></div>`;
+}
+function projRow(p) {
+  const ts = tasksOf(p), d = ts.filter(t => t.done).length, nx = ts.find(t => !t.done), pc = ts.length ? Math.round(d * 100 / ts.length) : 0;
+  const late = p.fm.echeance && isISO(p.fm.echeance) && p.fm.echeance < today() && p.fm.statut !== 'terminé';
+  return `<button class="k-row pj" data-open="${esc(p.path)}"><span class="k-ico" style="background:${sphereColor(p.dom)}22">🎯</span><span class="k-main"><b>${esc(p.title)}</b><small>${nx ? '→ ' + esc(plain(nx.text)) : ts.length ? 'Toutes les tâches sont faites' : 'Aucune tâche pour l’instant'}</small><div class="k-bar"><i style="width:${pc}%;background:${sphereColor(p.dom)}"></i></div></span><span class="k-side">${isISO(p.fm.echeance) ? `<span class="due ${late ? 'late' : ''}">${frDate(p.fm.echeance, { day: 'numeric', month: 'short' })}</span><br>` : ''}<small style="color:var(--mut);font-weight:600">${ts.length ? `${d}/${ts.length}` : ''}</small></span></button>`;
+}
+const noteRow = x => `<button class="k-row" data-open="${esc(x.path)}"><span class="k-ico" style="font-size:18px">${KIND(x.kind)?.emo || '📄'}</span><span class="k-main"><b>${esc(x.title)}</b><small>${esc(excerpt(x) || (x.sub ? x.sub : KIND(x.kind)?.label || ''))}</small></span>${dot(x.dom)}</button>`;
+
+function render() {
+  TK = [];
+  const I = buildIndex(), T = I.tasks.filter(t => !t.done);
+  const lateAll = T.filter(t => t.due && t.due < today()), nowAll = T.filter(t => t.due && t.due <= today());
+  const active = I.projs.filter(p => (p.fm.statut || 'actif') === 'actif');
+  hero($('#hero'), {
+    app: 'cerveau', title: 'Second cerveau', sub: '‹ Accueil · méthode PARA', subHref: './index.html',
+    actions: pill() + `<button class="k-ibtn" id="srch" aria-label="Rechercher">🔎</button><button class="k-ibtn" id="set" aria-label="Réglages">⚙︎</button>`,
+    rings: [
+      { label: 'Boîte', value: I.box.length, color: I.box.length > 9 ? '#e08a00' : undefined, on: () => go('boite') },
+      { label: "Aujourd'hui", value: nowAll.filter(inS2).length, color: lateAll.some(inS2) ? '#ff4f5e' : undefined, on: () => go('taches') },
+      { label: 'Projets', value: active.filter(inS).length, on: () => go('projets') },
+      { label: 'Notes', value: I.idx.filter(inS).length, on: () => go('notes') },
+    ],
+    after: el => { $$('[data-sync]', el).forEach(p => p.onclick = () => ghReady() ? sync() : settings()); paint(sstate, serr); $('#set', el).onclick = settings; $('#srch', el).onclick = () => search(); }
+  });
+  const html = { today: vToday, projets: vProjets, taches: vTaches, notes: vNotes, boite: vBoite }[view](I);
+  $('#main').innerHTML = html;
+  $$('[data-sph]').forEach(b => b.onclick = () => { sphere = b.dataset.sph; saveUI(); render(); });
+  bindView();
+  $$('.k-nav [data-tab]').forEach(b => b.classList.toggle('on', b.dataset.tab === view));
+  const u = lateAll[0] || nowAll[0];
+  publishSummary('cerveau', {
+    line: [I.box.length ? `${I.box.length} dans la boîte` : '', lateAll.length ? `${lateAll.length} en retard` : nowAll.length ? `${nowAll.length} pour aujourd'hui` : ''].filter(Boolean).join(' · ') || (active.length ? `${plural(active.length, 'projet')} en cours` : 'Tout est rangé'),
+    alert: !!lateAll.length,
+    urgent: u ? { title: plain(u.text), sub: u.note.title, k: 'Second cerveau', late: u.due < today(), date: u.due } : null
+  });
+}
+const inS2 = t => inS(t.note);
+function go(v) { view = v; saveUI(); scrollTo({ top: 0 }); render(); }
+
+/* ---------- Aujourd'hui ---------- */
+function vToday(I) {
+  if (!ghReady() && !Object.keys(notes).length) return bubble(`Pour retrouver tes notes sur tous tes appareils, renseigne ton jeton GitHub dans les réglages <b>⚙︎</b> (le même que pour les autres applis).`) + `<button class="k-btn block" id="goSet">Ouvrir les réglages</button>`;
+  if (ghReady() && !meta.last && !Object.keys(notes).length) return sstate === 'err' ? bubble(`Impossible d'ouvrir ton dépôt GitHub : ${esc(serr)}. Vérifie le jeton dans les réglages.`) + `<button class="k-btn block" id="goSet">Ouvrir les réglages</button>` : `<div class="k-spin"></div><p class="k-hint" style="text-align:center">Chargement de tes notes…</p>`;
+  const T = I.tasks.filter(t => !t.done && inS2(t));
+  const late = T.filter(t => t.due && t.due < today()).sort((a, b) => a.due.localeCompare(b.due)), tod = T.filter(t => t.due === today());
+  const week = T.filter(t => t.due > today() && t.due <= addDays(today(), 7)).sort((a, b) => a.due.localeCompare(b.due));
+  const projs = I.projs.filter(p => (p.fm.statut || 'actif') === 'actif' && inS(p)).sort((a, b) => (a.fm.echeance || '9').localeCompare(b.fm.echeance || '9'));
+  const recent = I.idx.filter(x => inS(x) && x.kind !== 'boite').sort((a, b) => b.stamp - a.stamp).slice(0, 5);
+  const revDue = !UI.review || daysTo(UI.review) <= -7;
+  const tip = late.length ? `${plural(late.length, 'tâche')} en retard. On commence par « ${esc(plain(late[0].text))} » ?`
+    : I.box.length > 5 ? `${I.box.length} choses attendent dans ta boîte. Deux minutes pour les classer, et ta tête est plus légère.`
+    : tod.length ? `${plural(tod.length, 'tâche')} pour aujourd'hui. Coche-les au fur et à mesure, j'adore le petit bruit.`
+    : !projs.length ? `Pas de projet en cours${sphere ? ' ici' : ''}. Un projet, c'est un objectif avec une fin : crée le premier !`
+    : revDue ? `Ça fait un moment : une petite revue de la semaine pour remettre tout d'aplomb ?`
+    : `Tout est rangé. Dès qu'une idée arrive, touche ＋ : ta tête n'est pas faite pour stocker, mais pour créer.`;
+  let h = bubble(tip) + spheresHTML();
+  if (late.length || tod.length) h += sec('À faire aujourd’hui', 'Toutes', 'taches') + `<div class="k-card flush">${[...late, ...tod].slice(0, 8).map(t => taskRow(t)).join('')}</div>`;
+  if (I.box.length) h += sec('Boîte de réception', 'Trier', 'boite') + `<div class="k-card flush">${I.box.slice(0, 3).map(noteRow).join('')}${I.box.length > 3 ? `<button class="k-row" data-go="boite"><span class="k-main"><small>… et ${I.box.length - 3} de plus</small></span></button>` : ''}</div>`;
+  if (week.length) h += sec('Cette semaine') + `<div class="k-card flush">${week.slice(0, 6).map(t => taskRow(t)).join('')}</div>`;
+  h += sec('Projets en cours', projs.length ? 'Tous' : '', 'projets') + (projs.length ? `<div class="k-card flush">${projs.slice(0, 5).map(projRow).join('')}</div>` : `<div class="k-card k-empty">Aucun projet en cours.<br><button class="k-btn sm" id="newP" style="margin-top:10px">＋ Nouveau projet</button></div>`);
+  h += `<div class="short" style="margin-top:6px"><button id="jour"><span style="font-size:22px">📓</span><span>Journal du jour<small>${frDate(today(), { weekday: 'long', day: 'numeric', month: 'long' })}</small></span></button><button id="rev"><span style="font-size:22px">🔄</span><span>Revue de la semaine<small>${UI.review ? 'Dernière : ' + frDate(UI.review, { day: 'numeric', month: 'short' }) : 'Jamais faite'}${revDue ? ' · <b style="color:var(--acc)">à faire</b>' : ''}</small></span></button></div>`;
+  if (recent.length) h += sec('Modifiées récemment') + `<div class="k-card flush">${recent.map(noteRow).join('')}</div>`;
+  return h;
+}
+
+/* ---------- Boîte de réception ---------- */
+function vBoite(I) {
+  if (!I.box.length) return bubble('Boîte vide. Rien ne traîne dans ta tête ni ici : profite !') + `<button class="k-btn block" id="capB">＋ Capturer quelque chose</button>`;
+  return bubble(`Pour chaque élément, une seule question : <b>où est-ce que ça me sera utile ?</b> Un projet, un domaine, une ressource… ou la corbeille.`) +
+    `<button class="k-btn block" id="triAll" style="margin-bottom:12px">Trier pas à pas (${I.box.length})</button>` +
+    I.box.map(x => `<div class="k-card boxc"><div style="display:flex;gap:8px;align-items:center">${dot(x.dom)}<b style="flex:1;min-width:0">${esc(x.title)}</b><small class="k-hint">${x.fm.cree ? frDate(x.fm.cree, { day: 'numeric', month: 'short' }) : ''}</small></div>${x.body.trim() ? `<div class="md" style="font-size:13.5px;margin-top:6px;max-height:140px;overflow:hidden">${md(x.body)}</div>` : ''}<div class="k-btns"><button class="k-btn sm" data-classify="${esc(x.path)}">Classer</button><button class="k-btn sm ghost" data-open="${esc(x.path)}">Ouvrir</button></div></div>`).join('');
+}
+
+/* ---------- Projets & domaines ---------- */
+function vProjets(I) {
+  const isP = x => x.kind === 'projet' || (x.kind === 'archive' && x.fm.type === 'projet');
+  const all = I.idx.filter(x => isP(x) && inS(x)), st = x => x.fm.statut || 'actif';
+  const L = all.filter(x => st(x) === projFilter && (projFilter === 'terminé' || x.kind === 'projet')).sort((a, b) => (a.fm.echeance || '9').localeCompare(b.fm.echeance || '9') || byTitle(a, b));
+  let h = spheresHTML() + `<div class="k-chips">${STATUTS.map(([k, l]) => `<button class="k-chip ${projFilter === k ? 'on' : ''}" data-pf="${k}">${l} · ${all.filter(x => st(x) === k && (k === 'terminé' || x.kind === 'projet')).length}</button>`).join('')}</div>`;
+  h += L.length ? `<div class="k-card flush">${L.map(projRow).join('')}</div>` : `<div class="k-card k-empty">${projFilter === 'actif' ? 'Aucun projet en cours.' : 'Rien ici.'}</div>`;
+  h += `<button class="k-btn block line" id="newP">＋ Nouveau projet</button>`;
+  const D = I.doms.filter(inS).sort(byTitle);
+  h += sec('Domaines', '＋ Ajouter', 'newdom') + (D.length ? `<div class="k-card flush">${D.map(x => { const o = tasksOf(x).filter(t => !t.done).length; return `<button class="k-row" data-open="${esc(x.path)}"><span class="k-ico" style="background:${sphereColor(x.dom)}22">🧭</span><span class="k-main"><b>${esc(x.title)}</b><small>${esc(excerpt(x))}</small></span><span class="k-side" style="color:var(--mut)">${o ? plural(o, 'tâche') : ''}</span></button>`; }).join('')}</div>` : `<div class="k-card k-empty">Aucun domaine.</div>`);
+  return h;
+}
+
+/* ---------- Tâches ---------- */
+function vTaches(I) {
+  const all = I.tasks.filter(inS2);
+  const tgt = sphere && I.doms.find(d => d.title === sphere);
+  let h = spheresHTML() + `<div class="qadd"><input id="qT" placeholder="Nouvelle tâche → ${esc(tgt ? tgt.title : 'Boîte')}" enterkeyhint="done"><button class="k-btn" id="qOk" aria-label="Ajouter">＋</button></div>`;
+  h += `<div class="k-chips"><button class="k-chip ${showDone ? '' : 'on'}" data-sd="0">À faire · ${all.filter(t => !t.done).length}</button><button class="k-chip ${showDone ? 'on' : ''}" data-sd="1">Faites</button></div>`;
+  if (showDone) {
+    const D = all.filter(t => t.done).sort((a, b) => (b.doneAt || '').localeCompare(a.doneAt || '')).slice(0, 60);
+    return h + (D.length ? `<div class="k-card flush">${D.map(t => taskRow(t)).join('')}</div>` : `<div class="k-card k-empty">Aucune tâche faite pour l’instant.</div>`);
+  }
+  const T = all.filter(t => !t.done), td = today();
+  const G = [['En retard', T.filter(t => t.due && t.due < td), 'bad'], ["Aujourd'hui", T.filter(t => t.due === td)], ['Demain', T.filter(t => t.due === addDays(td, 1))],
+    ['Cette semaine', T.filter(t => t.due > addDays(td, 1) && t.due <= addDays(td, 7))], ['Plus tard', T.filter(t => t.due > addDays(td, 7))], ['Sans date', T.filter(t => !t.due)]];
+  const body = G.filter(g => g[1].length).map(([l, L, c]) => `<div class="grp ${c || ''}">${l} · ${L.length}</div><div class="k-card flush">${L.sort((a, b) => (a.due || '').localeCompare(b.due || '')).map(t => taskRow(t)).join('')}</div>`).join('');
+  return h + (body || `<div class="k-card k-empty">Aucune tâche à faire${sphere ? ' ici' : ''}. 🎉</div>`);
+}
+
+/* ---------- Notes (PARA) ---------- */
+function vNotes(I) {
+  const L = I.idx.filter(inS);
+  let h = spheresHTML() + `<label class="k-search">🔎<input id="nq" value="${esc(nq)}" placeholder="Chercher dans toutes les notes…"></label>`;
+  if (nq.trim()) {
+    const R = hits(nq);
+    return h + (R.length ? `<div class="k-card flush">${R.map(noteRow).join('')}</div>` : `<div class="k-card k-empty">Rien trouvé.</div>`);
+  }
+  UI.open ||= {};
+  for (const k of [...KINDS, { id: 'autre', label: 'Autres', emo: '📄' }]) {
+    const X = L.filter(x => x.kind === k.id).sort(k.id === 'journal' ? (a, b) => b.title.localeCompare(a.title) : (a, b) => (a.sub || '').localeCompare(b.sub || '', 'fr') || byTitle(a, b));
+    if (!X.length && ['autre', 'journal'].includes(k.id)) continue;
+    let rows = '', cur = null;
+    for (const x of X) { if (x.sub !== cur) { cur = x.sub; if (cur) rows += `<div class="sub">${esc(cur)}</div>`; } rows += noteRow(x); }
+    h += `<details class="para k-card flush" data-k="${k.id}" ${UI.open[k.id] ? 'open' : ''}><summary class="k-row" style="border:0"><span class="k-ico" style="font-size:18px">${k.emo}</span><span class="k-main"><b>${k.label}</b><small>${X.length ? plural(X.length, 'note') : 'Vide'}</small></span><span class="chev">›</span></summary>${rows || '<p class="k-hint" style="padding:0 12px 12px">Rien pour l’instant.</p>'}</details>`;
+  }
+  return h + `<button class="k-btn block line" id="newN">＋ Nouvelle note</button>`;
+}
+function hits(q) {
+  const k = norm(q);
+  return buildIndex().idx.map(x => ({ x, t: norm(x.title).includes(k) ? 2 : norm(notes[x.path].text).includes(k) ? 1 : 0 })).filter(r => r.t).sort((a, b) => b.t - a.t || b.x.stamp - a.x.stamp).map(r => r.x).slice(0, 40);
+}
+
+function bindView() {
+  const on = (sel, f) => { const e = $(sel); if (e) e.onclick = f; };
+  on('#goSet', settings); on('#newP', () => newProject()); on('#jour', journal); on('#rev', review); on('#capB', () => capture()); on('#newN', () => editNote(null));
+  on('#triAll', () => { const b = buildIndex().box[0]; if (b) classify(b.path, true); });
+  $$('[data-pf]').forEach(b => b.onclick = () => { projFilter = b.dataset.pf; render(); });
+  $$('[data-sd]').forEach(b => b.onclick = () => { showDone = b.dataset.sd === '1'; render(); });
+  $$('details.para').forEach(d => d.ontoggle = () => { UI.open[d.dataset.k] = d.open; saveUI(); });
+  const qi = $('#nq'); if (qi) qi.oninput = () => { nq = qi.value; clearTimeout(qi._t); qi._t = setTimeout(() => { const p = qi.selectionStart; render(); const n = $('#nq'); n.focus(); n.setSelectionRange(p, p); }, 250); };
+  const qT = $('#qT'); if (qT) {
+    const add = () => {
+      const t = qT.value.trim(); if (!t) return;
+      const tgt = sphere && buildIndex().doms.find(d => d.title === sphere);
+      if (tgt) appendTo(tgt.path, { text: t, task: true }); else createNote(uniquePath(dirOf('boite'), firstLine(t)), build({ cree: today(), domaine: sphere || undefined }, `- [ ] ${t}\n`));
+      sound('pop'); render(); $('#qT')?.focus();
+    };
+    $('#qOk').onclick = add; qT.onkeydown = e => { if (e.key === 'Enter') add(); };
+  }
+}
+
+/* ---------- Clics communs (cases à cocher, liens, ouverture des notes) ---------- */
+document.addEventListener('click', e => {
+  const wl = e.target.closest('[data-wl]'); if (wl) { e.preventDefault(); return openWiki(wl.dataset.wl); }
+  if (e.target.closest('a[target]')) return;
+  const tk = e.target.closest('[data-tk]'); if (tk) { const t = TK[+tk.dataset.tk]; if (t) { if (toggleLine(t.path, t.line, t.raw)) sound('success'); render(); } return; }
+  const g = e.target.closest('[data-go]'); if (g) { e.preventDefault(); return g.dataset.go === 'newdom' ? editNote(null, { kind: 'domaine', fm: { type: 'domaine' } }) : go(g.dataset.go); }
+  const cl = e.target.closest('[data-classify]'); if (cl) return classify(cl.dataset.classify, false);
+  const op = e.target.closest('[data-open]'); if (op && !e.target.closest('summary')) { e.preventDefault(); return openNote(op.dataset.open); }
+});
+function openWiki(t) {
+  const p = findByTitle(t); if (p) return openNote(p);
+  if (confirm(`La note « ${t} » n'existe pas encore. La créer dans les ressources ?`)) { const np = createNote(uniquePath(dirOf('ressource'), t), build({ cree: today() }, '')); render(); editNote(np); }
+}
+
+/* ==========================================================
+   Panneaux
+   ========================================================== */
+function sphereChips(id, cur) {
+  return `<div class="k-chips" id="${id}">${[['', 'Aucun'], ...SPHERES.map(s => [s.id, s.id])].map(([k, l]) => `<button type="button" class="k-chip ${(cur || '') === k ? 'on' : ''}" data-v="${esc(k)}">${dot(k)}${esc(l)}</button>`).join('')}</div>`;
+}
+function chipGroup(root, id, onChange) {
+  const g = $('#' + id, root);
+  g.addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; $$('[data-v]', g).forEach(x => x.classList.toggle('on', x === b)); onChange?.(b.dataset.v); });
+  return () => $('[data-v].on', g)?.dataset.v ?? '';
+}
+function targetOptions(sel = '') {
+  const I = buildIndex(), o = x => `<option value="${esc(x.path)}" ${x.path === sel ? 'selected' : ''}>${esc(x.title)}${x.dom && x.kind === 'projet' ? ' · ' + esc(x.dom) : ''}</option>`;
+  const P = I.projs.filter(p => (p.fm.statut || 'actif') !== 'terminé').sort(byTitle), D = I.doms.sort(byTitle);
+  return (P.length ? `<optgroup label="Projets">${P.map(o).join('')}</optgroup>` : '') + (D.length ? `<optgroup label="Domaines">${D.map(o).join('')}</optgroup>` : '');
+}
+function dueChips(id, cur = '') {
+  const C = [['', 'Sans date'], [today(), "Aujourd'hui"], [addDays(today(), 1), 'Demain'], [nextMonday(), 'Lundi']];
+  return `<div class="k-chips" id="${id}">${C.map(([v, l]) => `<button type="button" class="k-chip ${cur === v ? 'on' : ''}" data-v="${v}">${l}</button>`).join('')}<input type="date" class="k-chip" style="padding:4px 10px" value="${C.some(c => c[0] === cur) ? '' : esc(cur)}"></div>`;
+}
+function dueGroup(root, id) {
+  const g = $('#' + id, root), inp = $('input', g); let v = $('[data-v].on', g)?.dataset.v || inp.value || '';
+  g.addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; $$('[data-v]', g).forEach(x => x.classList.toggle('on', x === b)); inp.value = ''; v = b.dataset.v; });
+  inp.onchange = () => { $$('[data-v]', g).forEach(x => x.classList.remove('on')); v = inp.value; };
+  return () => v;
+}
+
+/* ---------- Capturer ---------- */
+function capture(pre = {}) {
+  let task = !!pre.task;
+  const body = openSheet('Capturer', `
+    <textarea class="cap" id="capT" placeholder="Une idée, une tâche, un lien… tout ce qui te passe par la tête.">${esc(pre.text || '')}</textarea>
+    <div class="k-chips" id="capK" style="margin-top:8px"><button type="button" class="k-chip ${task ? '' : 'on'}" data-v="note">💡 Note</button><button type="button" class="k-chip ${task ? 'on' : ''}" data-v="tache">☐ Tâche</button></div>
+    <div id="capD" ${task ? '' : 'hidden'}><div class="k-hint" style="margin:2px 2px 6px">Échéance</div>${dueChips('capDue', pre.due || '')}</div>
+    <div class="k-hint" style="margin:6px 2px">Domaine</div>${sphereChips('capS', pre.dom ?? sphere)}
+    <div class="k-field" style="margin-top:6px"><label for="capTo">Ranger dans</label><select id="capTo"><option value="">📥 Boîte de réception (je trierai plus tard)</option>${targetOptions(pre.to || '')}</select></div>
+    <button class="k-btn block" id="capOk">Capturer</button>
+    <p class="k-hint" style="text-align:center;margin-top:12px">Depuis une autre appli du téléphone : <b>Partager → Quotidien</b> arrive directement ici.</p>`);
+  const getS = chipGroup(body, 'capS'), getDue = dueGroup(body, 'capDue');
+  chipGroup(body, 'capK', v => { task = v === 'tache'; $('#capD', body).hidden = !task; });
+  setTimeout(() => $('#capT', body)?.focus(), 120);
+  $('#capOk', body).onclick = () => {
+    const text = $('#capT', body).value.trim(); if (!text) return toast('Écris quelque chose');
+    const to = $('#capTo', body).value, due = task ? getDue() : '', dom = getS();
+    if (to && notes[to]) { appendTo(to, { text, task, due }); toast(`Ajouté à « ${titleOf(to)} »`); }
+    else {
+      const b = task ? text.split('\n').filter(l => l.trim()).map(l => TASK.test(l.trim()) ? l.trim() : `- [ ] ${l.trim()}${due ? ' 📅 ' + due : ''}`).join('\n') : text;
+      createNote(uniquePath(dirOf('boite'), firstLine(text) || 'Capture'), build({ cree: today(), domaine: dom || undefined }, b + '\n'));
+      toast('Dans la boîte 📥');
+    }
+    sound('pop'); closeSheet(() => render()); render();
+  };
+}
+
+/* ---------- Classer un élément de la boîte ---------- */
+function classify(path, chain = false) {
+  if (!notes[path]) return;
+  const x = info(path), single = x.body.trim().split('\n').filter(l => l.trim()).length <= 1 || x.body.split('\n').every(l => !l.trim() || TASK.test(l));
+  const firstDue = (/📅\s*(\d{4}-\d{2}-\d{2})/u.exec(x.body) || [])[1] || '';
+  const left = buildIndex().box.length;
+  const body = openSheet(chain ? `Classer (${left} restant${left > 1 ? 's' : ''})` : 'Classer', `
+    <div class="k-card"><div class="k-field" style="margin:0"><label for="cT">Titre</label><input id="cT" value="${esc(x.title)}"></div>${x.body.trim() ? `<div class="md" style="margin-top:10px;max-height:28dvh;overflow:auto;font-size:13.5px">${md(x.body)}</div>` : ''}</div>
+    <div class="k-hint" style="margin:4px 2px 6px">Domaine</div>${sphereChips('cS', x.dom)}
+    <div class="k-sec acc">Où le ranger ?</div>
+    <div class="dest">
+      <button type="button" data-d="add">➕ Dans une note<small>Un projet ou un domaine existant</small></button>
+      <button type="button" data-d="projet">🎯 Nouveau projet<small>Un objectif avec une fin</small></button>
+      <button type="button" data-d="ressource">📚 Ressource<small>À garder pour plus tard</small></button>
+      <button type="button" data-d="archive">🗄️ Archives<small>Plus utile, mais on garde</small></button>
+    </div>
+    <div id="cMore"></div>
+    <div class="k-btns" style="margin-top:12px"><button class="k-btn danger" id="cDel">🗑️ Supprimer</button>${chain ? '<button class="k-btn line" id="cSkip">Passer ›</button>' : ''}</div>`);
+  const getS = chipGroup(body, 'cS');
+  const title = () => cleanTitle($('#cT', body).value) || x.title;
+  const withDom = () => { const d = getS(); return build({ ...x.fm, domaine: d || undefined }, x.body, x.order); };
+  const done = (msg, openPath) => {
+    toast(msg); sound('pop'); render();
+    const nb = buildIndex().box.find(b => b.path !== path && notes[b.path]);
+    if (openPath) return openNote(openPath);
+    if (chain && nb) return classify(nb.path, true);
+    closeSheet(() => render()); if (chain) toast('Boîte vide 🎉');
+  };
+  $$('[data-d]', body).forEach(b => b.onclick = () => {
+    $$('[data-d]', body).forEach(y => y.classList.toggle('on', y === b));
+    const d = b.dataset.d, more = $('#cMore', body);
+    if (d === 'add') {
+      const opts = targetOptions();
+      if (!opts) { more.innerHTML = `<p class="k-hint" style="margin-top:10px">Aucun projet ni domaine pour l’instant : choisis « Nouveau projet ».</p>`; return; }
+      more.innerHTML = `<div class="k-card" style="margin-top:10px"><div class="k-field"><label for="cTo">Note</label><select id="cTo">${opts}</select></div>
+        <label class="k-switch">En faire une tâche <input type="checkbox" id="cTask" ${single ? 'checked' : ''}></label>
+        <div id="cDueW" ${single ? '' : 'hidden'}><div class="k-hint" style="margin:0 2px 6px">Échéance</div>${dueChips('cDue', firstDue)}</div>
+        <button class="k-btn block" id="cGo" style="margin-top:6px">Ranger</button></div>`;
+      const getDue = dueGroup(body, 'cDue');
+      $('#cTask', body).onchange = e => { $('#cDueW', body).hidden = !e.target.checked; };
+      $('#cGo', body).onclick = () => {
+        const to = $('#cTo', body).value, task = $('#cTask', body).checked;
+        const text = task && single ? (title() !== x.title || !x.body.trim() ? title() : x.body.trim()) : (x.body.trim() ? (title() !== firstLine(x.body) ? `**${title()}**\n` : '') + x.body.trim() : title());
+        appendTo(to, { text, task, due: task ? getDue() : '' }); deleteNote(path);
+        done(`Rangé dans « ${titleOf(to)} »`);
+      };
+      setTimeout(() => more.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 50);
+      return;
+    }
+    more.innerHTML = '';
+    if (d === 'projet') {
+      const tasks = x.body.split('\n').filter(l => TASK.test(l)).join('\n'), rest = x.body.split('\n').filter(l => !TASK.test(l)).join('\n').trim();
+      const np = uniquePath(dirOf('projet'), title());
+      createNote(np, build({ type: 'projet', domaine: getS() || undefined, statut: 'actif', cree: x.fm.cree || today() }, `## Objectif\n${rest}\n\n## Tâches\n${tasks || '- [ ] '}\n\n## Notes\n`));
+      deleteNote(path); if (np !== path) relink(x.title, titleOf(np));
+      return done('Nouveau projet créé 🎯', np);
+    }
+    const np = uniquePath(dirOf(d), title());
+    saveNote(path, withDom()); moveNote(path, np);
+    done(d === 'ressource' ? 'Rangé dans les ressources 📚' : 'Archivé 🗄️');
+  });
+  $('#cDel', body).onclick = () => { if (!confirm(`Supprimer « ${x.title} » ?`)) return; deleteNote(path); done('Supprimé'); };
+  if (chain) $('#cSkip', body).onclick = () => { const L = buildIndex().box, i = L.findIndex(b => b.path === path), nb = L[(i + 1) % L.length]; if (nb && nb.path !== path) classify(nb.path, true); else closeSheet(); };
+}
+
+/* ---------- Lire une note ---------- */
+function openNote(path) {
+  if (!notes[path]) return toast('Note introuvable');
+  const x = info(path), offset = notes[path].text.split('\n').length - x.body.split('\n').length;
+  const ts = tasksOf(x), back = backlinks(x);
+  const tags = [`<span class="k-tag mut">${KIND(x.kind)?.emo || '📄'} ${esc(KIND(x.kind)?.label || 'Note')}${x.sub ? ' · ' + esc(x.sub) : ''}</span>`,
+    x.dom ? `<span class="k-tag" style="background:${sphereColor(x.dom)}22;color:${sphereColor(x.dom)}">${esc(x.dom)}</span>` : '',
+    x.fm.type === 'projet' ? `<span class="k-tag ${x.fm.statut === 'terminé' ? 'ok' : x.fm.statut === 'en pause' ? 'warn' : ''}">${esc(x.fm.statut || 'actif')}</span>` : '',
+    isISO(x.fm.echeance) ? `<span class="k-tag ${x.fm.echeance < today() && x.fm.statut !== 'terminé' ? 'bad' : 'mut'}">📅 ${frDate(x.fm.echeance)}</span>` : '',
+    ts.length ? `<span class="k-tag mut">☐ ${ts.filter(t => t.done).length}/${ts.length}</span>` : '',
+    ...[].concat(x.fm.tags || []).map(t => `<span class="k-tag mut">#${esc(t)}</span>`)].filter(Boolean).join(' ');
+  const isProj = x.kind === 'projet';
+  const body = openSheet(x.title, `
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">${tags}</div>
+    <div class="k-card md" id="nMd">${md(x.body, offset) || '<p class="k-hint">Note vide. Touche « Modifier » pour écrire.</p>'}</div>
+    ${back.length ? `<div class="k-sec">Mentionnée dans</div><div class="k-card flush">${back.map(noteRow).join('')}</div>` : ''}
+    <div class="k-btns" style="margin-top:10px"><button class="k-btn" id="nEd">✏️ Modifier</button>${x.kind === 'boite' ? '<button class="k-btn ghost" id="nCl">Classer</button>' : '<button class="k-btn ghost" id="nMv">Déplacer</button>'}</div>
+    <div class="k-btns" style="margin-top:8px">${isProj && x.fm.statut !== 'terminé' ? '<button class="k-btn line" id="nEnd">✓ Projet terminé</button>' : ''}${x.kind === 'archive' ? '<button class="k-btn line" id="nUn">Sortir des archives</button>' : x.kind !== 'boite' && !isProj ? '<button class="k-btn line" id="nArc">🗄️ Archiver</button>' : ''}<button class="k-btn danger" id="nDel">Supprimer</button></div>
+    <p class="k-hint" style="margin-top:14px;word-break:break-all">📁 ${esc(path)}</p>`);
+  $('#nMd', body).addEventListener('click', e => {
+    const b = e.target.closest('[data-tl]'); if (!b) return;
+    const i = +b.dataset.tl;
+    if (toggleLine(path, i, notes[path].text.split('\n')[i])) sound('success');
+    const y = info(path); $('#nMd', body).innerHTML = md(y.body, notes[path].text.split('\n').length - y.body.split('\n').length); render();
+  });
+  const on = (s, f) => { const el = $(s, body); if (el) el.onclick = f; };
+  on('#nEd', () => editNote(path));
+  on('#nCl', () => classify(path, false));
+  on('#nMv', () => moveSheet(path));
+  on('#nEnd', () => { setFm(path, { statut: 'terminé', fini: today() }); const np = moveNote(path, uniquePath(dirOf('archive'), x.title)); sound('success'); toast('Bravo ! Projet rangé dans les archives 🎉'); render(); openNote(np); });
+  on('#nArc', () => { const np = moveNote(path, uniquePath(dirOf('archive'), x.title)); toast('Archivé 🗄️'); render(); openNote(np); });
+  on('#nUn', () => { const k = x.fm.type === 'projet' ? 'projet' : x.fm.type === 'domaine' ? 'domaine' : 'ressource'; if (k === 'projet') setFm(path, { statut: 'actif', fini: undefined }); const np = moveNote(path, uniquePath(dirOf(k), x.title)); toast('Sorti des archives'); render(); openNote(np); });
+  on('#nDel', () => { if (!confirm(`Supprimer « ${x.title} » ? (l'historique GitHub garde une copie)`)) return; deleteNote(path); closeSheet(() => render()); render(); toast('Supprimée'); });
+}
+
+/* ---------- Déplacer ---------- */
+function moveSheet(path) {
+  const x = info(path);
+  const opts = KINDS.filter(k => k.id !== 'journal');
+  const body = openSheet('Déplacer', `<p class="k-hint" style="margin-top:0">« ${esc(x.title)} »</p>
+    <div class="k-hint" style="margin:0 2px 6px">Ranger dans</div><div class="k-chips" id="mK">${opts.map(k => `<button type="button" class="k-chip ${k.id === x.kind ? 'on' : ''}" data-v="${k.id}">${k.emo} ${k.label}</button>`).join('')}</div>
+    <div class="k-hint" style="margin:6px 2px">Domaine</div>${sphereChips('mS', x.dom)}
+    <div class="k-field" style="margin-top:8px"><label for="mSub">Sous-dossier (facultatif)</label><input id="mSub" value="${esc(x.sub.replace(/ \/ /g, '/'))}" placeholder="Ex. Recettes, Clients/2026…"></div>
+    <button class="k-btn block" id="mOk">Déplacer</button>`);
+  const getK = chipGroup(body, 'mK'), getS = chipGroup(body, 'mS');
+  $('#mOk', body).onclick = () => {
+    const k = getK() || x.kind, sub = $('#mSub', body).value.split('/').map(cleanTitle).filter(Boolean).join('/');
+    const patch = { domaine: getS() || undefined };
+    if (k === 'projet' && x.fm.type !== 'projet') Object.assign(patch, { type: 'projet', statut: 'actif' });
+    if (k === 'domaine' && !x.fm.type) patch.type = 'domaine';
+    setFm(path, patch);
+    const dir = dirOf(k) + (sub ? '/' + sub : ''), np = folderOf(path) === dir ? path : moveNote(path, uniquePath(dir, x.title));
+    toast('Déplacée'); render(); openNote(np);
+  };
+}
+
+/* ---------- Écrire / modifier une note ---------- */
+function newProject() { editNote(null, { kind: 'projet', fm: { type: 'projet', statut: 'actif', domaine: sphere || undefined }, body: PROJ_BODY }); }
+function editNote(path, preset = {}) {
+  const isNew = !path || !notes[path];
+  const x = isNew ? { path: null, title: preset.title || '', kind: preset.kind || 'ressource', fm: { cree: today(), ...(preset.fm || {}) }, order: [], body: preset.body || '' } : info(path);
+  let kind = x.kind;
+  const projFields = () => `<div class="k-grid2"><div class="k-field"><label for="eSt">Statut</label><select id="eSt">${STATUTS.map(([k]) => `<option ${(x.fm.statut || 'actif') === k ? 'selected' : ''}>${k}</option>`).join('')}</select></div><div class="k-field"><label for="eEch">Échéance</label><input type="date" id="eEch" value="${esc(isISO(x.fm.echeance) ? x.fm.echeance : '')}"></div></div>`;
+  let saved = false;
+  const body = openSheet(isNew ? (kind === 'projet' ? 'Nouveau projet' : kind === 'domaine' ? 'Nouveau domaine' : 'Nouvelle note') : 'Modifier', `
+    <div class="k-field"><label for="eT">Titre</label><input id="eT" value="${esc(x.title)}" placeholder="${kind === 'projet' ? 'Ex. Refaire le site PhantStudio' : 'Titre de la note'}"></div>
+    ${isNew && !preset.kind ? `<div class="k-chips" id="eK">${['ressource', 'projet', 'domaine', 'boite'].map(k => `<button type="button" class="k-chip ${k === kind ? 'on' : ''}" data-v="${k}">${KIND(k).emo} ${KIND(k).label}</button>`).join('')}</div>` : ''}
+    <div class="k-hint" style="margin:0 2px 6px">Domaine</div>${sphereChips('eS', x.fm.domaine || '')}
+    <div id="eP">${kind === 'projet' ? projFields() : ''}</div>
+    <div class="tools"><button type="button" data-t="task">☐ Tâche</button><button type="button" data-t="due">📅 Date</button><button type="button" data-t="h">Titre</button><button type="button" data-t="li">• Liste</button><button type="button" data-t="link">[[ Lien ]]</button><button type="button" data-t="b">Gras</button></div>
+    <textarea class="ed" id="eB" placeholder="Écris ici. « - [ ] » crée une tâche, « [[Titre]] » un lien vers une autre note.">${esc(x.body)}</textarea>
+    <button class="k-btn block" id="eOk" style="margin-top:10px">Enregistrer</button>`, { onClose: () => { if (!saved && changed()) { commit(); toast('Enregistrée'); render(); } } });
+  const ta = $('#eB', body), tIn = $('#eT', body), pBox = $('#eP', body), getS = chipGroup(body, 'eS'); // références gardées : le panneau est vidé avant onClose
+  const st = () => $('#eSt', pBox)?.value, ech = () => $('#eEch', pBox)?.value;
+  const snap = () => JSON.stringify([tIn.value.trim(), getS(), ta.value, st() ?? '', ech() ?? '']), initial = snap();
+  const changed = () => { const t = tIn.value.trim(), b = ta.value; if (isNew && !t && !b.trim()) return false; if (isNew && kind === 'projet' && !t && b === PROJ_BODY) return false; return snap() !== initial; };
+  if ($('#eK', body)) chipGroup(body, 'eK', v => { kind = v; pBox.innerHTML = v === 'projet' ? projFields() : ''; if (v === 'projet' && !ta.value.trim()) ta.value = PROJ_BODY; if (v !== 'projet' && ta.value === PROJ_BODY) ta.value = ''; });
+  function commit() {
+    const title = cleanTitle(tIn.value) || firstLine(ta.value) || (kind === 'journal' ? today() : 'Sans titre');
+    const fm = { ...x.fm, domaine: getS() || undefined };
+    if (kind === 'projet') Object.assign(fm, { type: 'projet', statut: st() || 'actif', echeance: ech() || undefined });
+    if (kind === 'domaine') fm.type = 'domaine';
+    if (!isNew) fm.modifie = today();
+    const text = build(fm, ta.value.replace(/\s+$/, '') + '\n', x.order);
+    saved = true;
+    if (isNew) return createNote(uniquePath(dirOf(kind), title), text);
+    let p = path;
+    if (title !== x.title) p = moveNote(path, uniquePath(folderOf(path), title, path));
+    return saveNote(p, text);
+  }
+  // Barre d'outils
+  const linePre = pre => { const s = ta.selectionStart, v = ta.value, ls = v.lastIndexOf('\n', s - 1) + 1; ta.value = v.slice(0, ls) + pre + v.slice(ls); ta.selectionStart = ta.selectionEnd = s + pre.length; ta.focus(); };
+  const wrap = (a, b) => { const s = ta.selectionStart, e = ta.selectionEnd, v = ta.value; ta.value = v.slice(0, s) + a + v.slice(s, e) + b + v.slice(e); ta.selectionStart = s + a.length; ta.selectionEnd = e + a.length; ta.focus(); };
+  $$('[data-t]', body).forEach(b => b.onclick = () => ({ task: () => linePre('- [ ] '), li: () => linePre('- '), h: () => linePre('## '), link: () => wrap('[[', ']]'), b: () => wrap('**', '**'), due: () => wrap(` 📅 ${addDays(today(), 1)}`, '') })[b.dataset.t]());
+  // Entrée dans une liste : la ligne suivante reprend la puce ou la case à cocher
+  ta.addEventListener('beforeinput', e => {
+    if (!['insertLineBreak', 'insertParagraph'].includes(e.inputType) || ta.selectionStart !== ta.selectionEnd) return;
+    const s = ta.selectionStart, v = ta.value, ls = v.lastIndexOf('\n', s - 1) + 1, line = v.slice(ls, s);
+    const m = /^(\s*)([-*+] \[[ xX]\] |[-*+] |(\d+)\. )(.*)$/.exec(line); if (!m) return;
+    e.preventDefault();
+    if (!m[4].trim()) { ta.value = v.slice(0, ls) + v.slice(s); ta.selectionStart = ta.selectionEnd = ls; return; }
+    const next = m[1] + (m[3] ? `${+m[3] + 1}. ` : m[2].replace(/\[[xX]\]/, '[ ]'));
+    ta.value = v.slice(0, s) + '\n' + next + v.slice(s); ta.selectionStart = ta.selectionEnd = s + 1 + next.length;
+  });
+  $('#eOk', body).onclick = () => { const p = commit(); render(); closeSheet(() => { render(); if (p) openNote(p); }); };
+  if (isNew) setTimeout(() => tIn.focus(), 120);
+}
+
+/* ---------- Journal du jour ---------- */
+function journal() {
+  const p = `${dirOf('journal')}/${today()}.md`;
+  if (!notes[p]) createNote(p, build({ cree: today() }, `## Notes du jour\n\n\n## Fait aujourd'hui\n`));
+  render(); editNote(p);
+}
+
+/* ---------- Revue de la semaine ---------- */
+function review() {
+  const I = buildIndex(), T = I.tasks.filter(t => !t.done);
+  const late = T.filter(t => t.due && t.due < today());
+  const act = I.projs.filter(p => (p.fm.statut || 'actif') === 'actif');
+  const stuck = act.filter(p => !tasksOf(p).some(t => !t.done));
+  const fin = I.projs.filter(p => p.fm.statut === 'terminé' || (tasksOf(p).length && tasksOf(p).every(t => t.done)));
+  const row = (n, t, sub, btn, id) => `<div class="rev"><span class="n ${n ? '' : 'ok'}">${n || '✓'}</span><span class="k-main" style="flex:1;min-width:0"><b style="font-size:14px">${t}</b><small class="k-hint" style="display:block">${sub}</small></span>${n && btn ? `<button class="k-btn sm ghost" id="${id}">${btn}</button>` : ''}</div>`;
+  const body = openSheet('Revue de la semaine', `
+    ${bubble('Dix minutes par semaine, et tout reste sous contrôle. On y va dans l’ordre.')}
+    <div class="k-card flush">
+      ${row(I.box.length, 'Vider la boîte de réception', 'Chaque élément trouve sa place, ou part à la corbeille.', 'Trier', 'r1')}
+      ${row(late.length, 'Tâches en retard', 'Les faire, les replanifier ou les supprimer.', 'Voir', 'r2')}
+      ${row(stuck.length, 'Projets sans prochaine tâche', stuck.length ? stuck.map(p => esc(p.title)).join(', ') : 'Chaque projet sait quoi faire ensuite.', 'Ouvrir', 'r3')}
+      ${row(fin.length, 'Projets finis à archiver', fin.length ? fin.map(p => esc(p.title)).join(', ') : 'Rien à archiver.', 'Archiver', 'r4')}
+      ${row(0, 'Vider ta tête', 'Ce qui traîne encore dans un coin de ta tête ? Capture-le.', '', '')}
+    </div>
+    <div class="k-btns" style="margin-top:10px"><button class="k-btn line" id="r5">＋ Capturer</button><button class="k-btn" id="rOk">✓ Revue faite</button></div>`);
+  const on = (s, f) => { const el = $(s, body); if (el) el.onclick = f; };
+  on('#r1', () => { const b = buildIndex().box[0]; if (b) classify(b.path, true); });
+  on('#r2', () => closeSheet(() => { showDone = false; go('taches'); }));
+  on('#r3', () => openNote(stuck[0].path));
+  on('#r4', () => { if (!confirm(`Archiver ${plural(fin.length, 'projet')} ?`)) return; fin.forEach(p => { setFm(p.path, { statut: 'terminé', fini: p.fm.fini || today() }); moveNote(p.path, uniquePath(dirOf('archive'), p.title)); }); toast('Archivés 🗄️'); render(); review(); });
+  on('#r5', () => capture());
+  on('#rOk', () => { UI.review = today(); saveUI(); sound('success'); toast('Revue faite. À la semaine prochaine !'); closeSheet(() => render()); });
+}
+
+/* ---------- Recherche ---------- */
+function search() {
+  const body = openSheet('Rechercher', `<label class="k-search">🔎<input id="sQ" placeholder="Titre, mot, #étiquette…" autocomplete="off"></label><div id="sR"></div>`);
+  const q = $('#sQ', body), R = $('#sR', body);
+  const draw = () => { const v = q.value.trim(); if (!v) { R.innerHTML = '<p class="k-hint" style="text-align:center">Tape quelques lettres.</p>'; return; } const L = hits(v); R.innerHTML = L.length ? `<div class="k-card flush">${L.map(noteRow).join('')}</div>` : '<p class="k-hint" style="text-align:center">Rien trouvé.</p>'; };
+  q.oninput = draw; draw(); setTimeout(() => q.focus(), 120);
+}
+
+/* ---------- Réglages ---------- */
+function settings() {
+  openCommonSettings(`<div class="k-sec acc">Second cerveau</div>
+    <p class="k-hint" style="margin-top:0">Tes notes sont des fichiers texte (Markdown) dans le dossier <b>${ROOT}/</b> de ton dépôt privé : tu peux aussi les lire et les modifier sur GitHub ou dans Obsidian. Chaque enregistrement est un commit, l'historique permet de revenir en arrière.</p>
+    <button type="button" class="k-btn line block" id="reload" style="margin-bottom:6px">Tout recharger depuis GitHub</button>`,
+    (body, saving) => {
+      if (saving) return;
+      $('#reload', body).onclick = () => {
+        if (meta.dirty && !confirm('Des modifications ne sont pas encore envoyées sur GitHub. Elles seront gardées et envoyées ensuite. Continuer ?')) return;
+        for (const p of Object.keys(notes)) if (!notes[p].dirty) delete notes[p];
+        meta.head = null; meta.tree = null; meta.treeSha = null; persist();
+        closeSheet(() => { render(); sync(); });
+      };
+    });
+}
+addEventListener('k-settings', () => { meta.head = null; sync(); render(); });
+
+/* ---------- Démarrage ---------- */
+const n = nav([{ id: 'today', label: 'Aujourd’hui' }, { id: 'projets', label: 'Projets' }, { id: 'taches', label: 'Tâches' }, { id: 'notes', label: 'Notes' }], { active: view, fab: true });
+n.onclick = e => { const b = e.target.closest('button'); if (!b) return; if (b.classList.contains('k-fab')) return capture(); if (b.dataset.tab) go(b.dataset.tab); };
+render();
+// Partage depuis une autre appli (Android : « Partager → Quotidien ») ou raccourci « Capturer »
+const sp = new URLSearchParams(location.search);
+if (['capture', 'text', 'url', 'title'].some(k => sp.has(k))) {
+  const url = sp.get('url') || '', txt = sp.get('text') || '', ttl = sp.get('title') || '';
+  const text = [ttl && !txt.includes(ttl) ? ttl : '', txt, url && !txt.includes(url) ? url : ''].filter(Boolean).join('\n');
+  history.replaceState(null, '', location.pathname);
+  capture({ text });
+}
+sync();
+</script>
+</body>
+</html>

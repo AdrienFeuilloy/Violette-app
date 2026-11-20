@@ -16,6 +16,7 @@ Le hub de la maison, hébergé sur **GitHub Pages**. Chaque appli range ses donn
 | `garage.html` | Garage : entretien de la voiture | `JSON_GARAGE.json` |
 | `colis.html` | Colis : suivi des commandes | `JSON_COLIS.json` |
 | `collections.html` | Collections : objets, envies, prêts (ajout par photo IA) | `JSON_COLLECTIONS.json` |
+| `cerveau.html` | Second cerveau (méthode PARA) : capture, boîte de réception, projets, tâches, notes | dossier `Cerveau/` (fichiers Markdown) |
 
 Fichiers communs : `ui/kit.css` et `ui/kit.js` (style, synchro, réglages, Rocket), `passerelle-budget.js` (Paperasse → Cha-cha), `sw.js` (hors ligne), `manifest.webmanifest` et les icônes.
 
@@ -46,7 +47,30 @@ En bas de chaque appli, deux liens discrets : **✦ Visite guidée** (une série
 - Hors ligne, tout fonctionne ; les modifications partent au retour du réseau.
 - Chaque sauvegarde est un commit : l'historique de chaque JSON sur GitHub permet de revenir en arrière.
 
+## Second cerveau
+
+Les notes ne sont pas dans un JSON : chacune est un **fichier Markdown** du dossier `Cerveau/` du dépôt privé, lisible tel quel sur GitHub ou dans Obsidian.
+
+| Dossier | Contenu |
+|---|---|
+| `0-Boite/` | Boîte de réception : ce qui est capturé vite, à trier |
+| `1-Projets/` | Objectifs avec une fin (`type: projet`, `statut`, `echeance`) |
+| `2-Domaines/` | Ce qui dure : Perso, Salarié, PhantStudio… |
+| `3-Ressources/` | À garder pour plus tard (sous-dossiers libres) |
+| `4-Archives/` | Projets finis, notes qui ne servent plus |
+| `Journal/` | Une note par jour (`AAAA-MM-JJ.md`) |
+
+- En-tête YAML : `domaine` (Perso, Salarié ou PhantStudio), `type`, `statut`, `echeance`, `cree`, `modifie`.
+- Tâches : `- [ ] texte 📅 AAAA-MM-JJ`, cochées `- [x] texte ✅ AAAA-MM-JJ` (même format que le module Tasks d'Obsidian).
+- Liens : `[[Titre d'une note]]` ; renommer une note met à jour les liens.
+- Synchro : API Git de GitHub, un commit par lot de modifications. Si une même note est modifiée sur deux appareils, les deux versions sont gardées (« … (autre appareil …) »).
+- Capture depuis le téléphone : bouton ＋, appui long sur l'icône → « Capturer », ou **Partager → Quotidien** depuis n'importe quelle appli (Android, appli installée).
+
 ## Historique
+
+### v2.12.0
+- Nouvelle appli **Second cerveau** (`cerveau.html`) : capture rapide, boîte de réception à trier pas à pas, projets avec avancement, tâches de toutes les notes par échéance, notes rangées selon PARA, journal du jour, revue de la semaine, recherche.
+- Le hub accepte les partages Android (« Partager → Quotidien ») et propose un raccourci « Capturer » sur l'icône.
 
 ### v2.0.0
 - L'accueil devient un hub ; Violette passe sur `violette.html` (aucune donnée ne change).

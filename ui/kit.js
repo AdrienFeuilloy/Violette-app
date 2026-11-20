@@ -37,6 +37,7 @@ export const APPS = [
   { id: 'garage',      name: 'Garage',      sub: 'Entretien voiture',    color: '#2f86ff', href: './garage.html',      icon: 'garage' },
   { id: 'colis',       name: 'Colis',       sub: 'Commandes & retraits', color: '#b07a45', href: './colis.html',       icon: 'colis' },
   { id: 'collections', name: 'Collections', sub: 'Livres, BD, vinyles',  color: '#ffc21a', href: './collections.html', icon: 'collections' },
+  { id: 'cerveau',     name: 'Cerveau',     sub: 'Second cerveau',       color: '#e8489a', href: './cerveau.html',     icon: 'cerveau' },
 ];
 export const HUB = { id: 'hub', name: 'Accueil', color: '#ff7a59', href: './index.html' };
 export const appById = id => APPS.find(a => a.id === id) || HUB;
@@ -92,7 +93,7 @@ export function pushHubPrefs() {
   d.data.settingsAt = now(); d.save();
 }
 import { hasTour, startTour, tourCSS } from './tour.js';
-export const APP_VERSION = '2.11.0';
+export const APP_VERSION = '2.12.0';
 export function initApp(appId) {
   CURRENT_APP = appId;
   // Service worker commun à toutes les pages, vérifié à chaque ouverture (les mises à jour arrivent sans attendre)
@@ -128,6 +129,7 @@ const ICONS = {
   colis: (c, k) => `<rect x="3.5" y="7" width="17" height="13" rx="2.5" fill="${c}"/><rect x="2.5" y="4" width="19" height="5" rx="2" fill="${k}"/><rect x="10.3" y="4" width="3.4" height="16" fill="${k}" opacity=".35"/>`,
   animaux: (c, k) => `<ellipse cx="12" cy="16" rx="5.5" ry="4.5" fill="${c}"/><circle cx="5.5" cy="10" r="2.4" fill="${k}"/><circle cx="9.5" cy="6.5" r="2.4" fill="${c}"/><circle cx="14.5" cy="6.5" r="2.4" fill="${k}"/><circle cx="18.5" cy="10" r="2.4" fill="${c}"/>`,
   plantes: (c, k) => `<path d="M12 21V11" stroke="${k}" stroke-width="2.2" stroke-linecap="round"/><path d="M12 12C12 6 7 3 3 4c0 5 4 8 9 8z" fill="${c}"/><path d="M12 15c0-5 4-8 9-7 0 4-4 7-9 7z" fill="${c}" opacity=".6"/><rect x="7" y="19" width="10" height="3" rx="1.5" fill="${k}"/>`,
+  cerveau: (c, k) => `<path d="M7 7.5L17 9.5M7 7.5l3.5 10.5M17 9.5l-6.5 8.5" stroke="${k}" stroke-width="1.8" opacity=".45"/><circle cx="7" cy="7.5" r="4" fill="${c}"/><circle cx="17" cy="9.5" r="3.2" fill="${k}"/><circle cx="10.5" cy="18" r="3.6" fill="${c}" opacity=".6"/>`,
   hub: (c, k) => `<circle cx="8" cy="8" r="4" fill="${c}"/><circle cx="16" cy="8" r="4" fill="${k}"/><circle cx="8" cy="16" r="4" fill="${k}"/><circle cx="16" cy="16" r="4" fill="${c}" opacity=".6"/>`,
 };
 export function icon(name, { size = 24, color, ink } = {}) {
@@ -233,7 +235,7 @@ ${pos.map(([x, y], i) => `<circle cx="${x}" cy="${y}" r="${R + 3}" fill="none" s
     opts.after?.(el);
   };
   draw();
-  if (!el._resizeBound) { el._resizeBound = true; let t; addEventListener('resize', () => { clearTimeout(t); t = setTimeout(() => { if (el.isConnected) draw(); }, 200); }); }
+  if (!el._resizeBound) { el._resizeBound = true; let t; addEventListener('resize', () => { clearTimeout(t); t = setTimeout(() => { if (el.isConnected) el._redraw?.(); }, 200); }); } // toujours le dernier dessin (sinon le clavier ou une rotation réaffichait les chiffres du premier affichage)
   el._redraw = draw;
   return el;
 }
@@ -631,7 +633,7 @@ export function openFeedback(appId = CURRENT_APP) {
 /* ---------- Se déconnecter de cet appareil ---------- */
 // Efface de ce navigateur le jeton GitHub, la clé Gemini et toutes les données des applis.
 // Rien n'est effacé sur GitHub : il suffit de saisir le jeton sur un autre appareil pour tout retrouver.
-const OWN_PREFIXES = ['hub.', 'violette_', 'collections.', 'paperasse.', 'budget.', 'habits.', 'garage.', 'colis.', 'animaux.', 'plantes.', 'passerelle.', 'liquid_budget_'];
+const OWN_PREFIXES = ['hub.', 'violette_', 'collections.', 'paperasse.', 'budget.', 'habits.', 'garage.', 'colis.', 'animaux.', 'plantes.', 'cerveau.', 'passerelle.', 'liquid_budget_'];
 export function unsyncedApps() {
   const out = new Set();
   for (let i = 0; i < localStorage.length; i++) {
