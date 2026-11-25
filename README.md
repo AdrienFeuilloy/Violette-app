@@ -21,7 +21,9 @@ Fichiers communs : `ui/kit.css` et `ui/kit.js` (style, synchro, réglages, Rocke
 
 ## Réglages (une seule fois par téléphone)
 
-Ouvre n'importe quelle appli, touche ⚙️, puis renseigne **Propriétaire**, **Dépôt** (le dépôt privé de données), **Branche** et **Jeton**. Ces réglages sont partagés par toutes les applis. Un téléphone déjà réglé pour Violette n'a rien à refaire : les applis reprennent ses réglages.
+Ouvre n'importe quelle appli, touche ⚙️, puis renseigne **Propriétaire**, **Dépôt** (le dépôt privé de données), **Branche** et **Jeton**. Ces réglages sont partagés par toutes les applis du hub, et seulement par elles : Cerveau et Phant ont chacun leur propre connexion.
+
+**Login simple.** ⚙️ de l'accueil → « Activer le login » (depuis un appareil déjà relié) : on choisit un identifiant et un mot de passe propres au hub (12 caractères ou plus). Le jeton est chiffré avec eux (PBKDF2 600 000 itérations + AES-GCM) et publié dans `acces.json`, à la racine de ce dépôt ; seul le chiffré est public. Le jeton doit avoir accès en écriture au dépôt `violette-app` pour publier ce fichier. Sur un nouvel appareil, l'écran de connexion s'ouvre tout seul. En cas de nouveau jeton, réactiver le login.
 
 La clé Gemini est facultative : elle sert au scan de Paperasse, à l'ajout par photo de Collections et au classement IA de Cha-cha.
 
@@ -47,6 +49,10 @@ En bas de chaque appli, deux liens discrets : **✦ Visite guidée** (une série
 - Chaque sauvegarde est un commit : l'historique de chaque JSON sur GitHub permet de revenir en arrière.
 
 ## Historique
+
+### v2.12.0
+- Connexion propre au hub : écran identifiant + mot de passe sur un nouvel appareil, sans dépendre de Cerveau.
+- La déconnexion et les mises à jour ne touchent plus aux autres applis du même site (Cerveau, Phant).
 
 ### v2.0.0
 - L'accueil devient un hub ; Violette passe sur `violette.html` (aucune donnée ne change).

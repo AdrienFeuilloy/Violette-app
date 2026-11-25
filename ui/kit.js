@@ -92,13 +92,14 @@ export function pushHubPrefs() {
   d.data.settingsAt = now(); d.save();
 }
 import { hasTour, startTour, tourCSS } from './tour.js';
-export const APP_VERSION = '2.11.1';
+export const APP_VERSION = '2.12.0';
 export function initApp(appId) {
   CURRENT_APP = appId;
   // Service worker commun à toutes les pages, vérifié à chaque ouverture (les mises à jour arrivent sans attendre)
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register('./sw.js').then(r => r.update()).catch(() => {});
   setTimeout(() => addFooter(appId), 60);
   setTimeout(() => hubSync().sync(), 600);
+  if (!ghReady()) setTimeout(autoLogin, 700);
   const app = appById(appId);
   const dark = applyTheme();
   const r = document.documentElement.style;
@@ -455,6 +456,82 @@ export async function ghTest() {
   return { name: j.full_name, private: j.private, push: j.permissions?.push !== false };
 }
 
+/* ---------- Connexion propre à Gestion quotidien : identifiant + mot de passe ----------
+   Le jeton est chiffré (PBKDF2 600 000 itérations + AES-GCM) avec un identifiant et un mot de passe
+   choisis ici, puis publié dans acces.json à la racine de ce dépôt (seul le chiffré est public).
+   Indépendant des autres applis du même site : rien n'est lu ni écrit chez elles. */
+const APP_REPO = 'adrienfeuilloy/violette-app', ACCES = 'acces.json', ITER = 600000;
+const u64 = b => btoa(String.fromCharCode(...b)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const d64 = s => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
+async function loginKey(id, pw, salt) {
+  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(id.trim().toLowerCase() + '|' + pw), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: ITER, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+}
+export async function loginEncrypt(id, pw, data) {
+  const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await loginKey(id, pw, salt), new TextEncoder().encode(JSON.stringify(data))));
+  const all = new Uint8Array(28 + ct.length); all.set(salt); all.set(iv, 16); all.set(ct, 28);
+  return u64(all);
+}
+export async function loginDecrypt(id, pw, blob) {
+  const all = d64(blob);
+  return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: all.slice(16, 28) }, await loginKey(id, pw, all.slice(0, 16)), all.slice(28))));
+}
+async function fetchAcces() {
+  try { const r = await fetch(`./${ACCES}?t=${Date.now()}`, { cache: 'no-store' }); if (!r.ok) return null; const j = await r.json(); return /^[\w-]{40,}$/.test(j.data || '') ? j.data : null; } catch { return null; }
+}
+export function openLogin(blob) {
+  const body = openSheet('Connexion', `<p>Ton identifiant et ton mot de passe <b>Gestion quotidien</b> pour retrouver tes applis sur cet appareil.</p>
+    <div class="k-field"><label for="lgI">Identifiant</label><input id="lgI" autocomplete="username" autocapitalize="off"></div>
+    <div class="k-field"><label for="lgP">Mot de passe</label><input id="lgP" type="password" autocomplete="current-password"></div>
+    <div class="k-btns"><button class="k-btn line" id="lgTok">Saisir un jeton</button><button class="k-btn" id="lgOk">Se connecter</button></div><p class="k-hint" id="lgM"></p>`);
+  setTimeout(() => $('#lgI', body)?.focus(), 150);
+  $('#lgP', body).onkeydown = e => { if (e.key === 'Enter') $('#lgOk', body).click(); };
+  $('#lgTok', body).onclick = () => openCommonSettings();
+  $('#lgOk', body).onclick = async () => {
+    const m = $('#lgM', body), btn = $('#lgOk', body); btn.disabled = true; m.textContent = 'Déchiffrement…';
+    try {
+      const d = await loginDecrypt($('#lgI', body).value, $('#lgP', body).value, blob);
+      setGH({ owner: d.o, repo: d.r, branch: d.b || 'main', token: d.k });
+      toast('Connecté ✓'); closeSheet(() => location.reload());
+    } catch { m.textContent = '✗ Identifiant ou mot de passe incorrect'; btn.disabled = false; }
+  };
+}
+async function autoLogin() {
+  const b = await fetchAcces();
+  if (b && !ghReady() && (!sheetEl || sheetEl.hidden)) openLogin(b);
+}
+function loginSetupSheet() {
+  if (!ghReady()) return toast('Renseigne d’abord le jeton dans les réglages');
+  const body = openSheet('Activer le login', `<p class="k-hint" style="margin-top:0">Choisis un identifiant et un mot de passe <b>propres à Gestion quotidien</b> (pas ceux de GitHub ni de Cerveau). Sur un nouvel appareil, il suffira d’ouvrir l’appli et de les saisir.</p>
+    <div class="k-field"><label for="laI">Identifiant</label><input id="laI" autocomplete="username" autocapitalize="off" placeholder="ex. adrien"></div>
+    <div class="k-field"><label for="laP">Mot de passe (12 caractères ou plus)</label><input id="laP" type="password" autocomplete="new-password"></div>
+    <div class="k-field"><label for="laP2">Confirmer le mot de passe</label><input id="laP2" type="password" autocomplete="new-password"></div>
+    <p class="k-hint">Seule une version chiffrée de ton accès est publiée avec l’appli. Un mot de passe long (une petite phrase) la rend impossible à casser.</p>
+    <div class="k-btns"><button class="k-btn" id="laOk">Activer</button></div><p class="k-hint" id="laM"></p>`);
+  $('#laOk', body).onclick = async () => {
+    const id = $('#laI', body).value.trim(), pw = $('#laP', body).value, m = $('#laM', body), btn = $('#laOk', body);
+    if (!id) return toast('Choisis un identifiant');
+    if (pw.length < 12) return toast('Mot de passe trop court (12 caractères minimum)');
+    if (pw !== $('#laP2', body).value) return toast('Les deux mots de passe ne correspondent pas');
+    btn.disabled = true; m.textContent = 'Chiffrement…';
+    try {
+      const g = getGH(), blob = await loginEncrypt(id, pw, { o: g.owner, r: g.repo, b: g.branch, k: g.token });
+      const url = `https://api.github.com/repos/${APP_REPO}/contents/${ACCES}`;
+      let sha; const r0 = await fetch(url, { headers: ghH(), cache: 'no-store' }); if (r0.ok) sha = (await r0.json()).sha;
+      const r = await fetch(url, { method: 'PUT', headers: { ...ghH(), 'Content-Type': 'application/json' }, body: JSON.stringify({ message: 'Accès chiffré', content: b64e(JSON.stringify({ v: 1, data: blob }) + '\n'), ...(sha ? { sha } : {}) }) });
+      if (!r.ok) throw await ghErr(r);
+      toast('Login activé ✓');
+      m.innerHTML = '✓ Activé. Sur un nouvel appareil, ouvre <b>adrienfeuilloy.github.io/Violette-app</b> et connecte-toi (disponible d’ici une minute).';
+    } catch (e) {
+      btn.disabled = false;
+      m.innerHTML = e.status === 403 || e.status === 404
+        ? '✗ Ton jeton n’a pas accès au dépôt <b>violette-app</b>. Ajoute-le à ton jeton (<a href="https://github.com/settings/personal-access-tokens" target="_blank" rel="noopener">jetons GitHub</a> → ton jeton → Repository access : ajouter <b>violette-app</b>, Contents : lecture et écriture), puis réessaie.'
+        : '✗ Échec de la publication (' + esc(e.message) + '). Réessaie.';
+    }
+  };
+}
+
 /* ---------- Fusion générique { items:[{id,updatedAt}], tombstones:{} } ---------- */
 export function mergeItems(a, b, lists = ['items']) {
   const out = { ...b, ...a };
@@ -523,10 +600,11 @@ export function commonSettingsHTML() {
   return `<div class="k-sec acc">Apparence</div>
   <div class="k-chips" id="cTheme">${[['auto', 'Selon le téléphone'], ['light', 'Clair'], ['dark', 'Sombre']].map(([k, l]) => `<button class="k-chip ${(p.theme || 'auto') === k ? 'on' : ''}" data-th="${k}">${l}</button>`).join('')}</div>
   <label class="k-switch">Sons discrets <input type="checkbox" id="cSounds" ${p.sounds === false ? '' : 'checked'}></label>
-  <div class="k-sec acc">Dépôt GitHub privé (toutes les apps)</div>
+  <div class="k-sec acc">Dépôt GitHub privé (toutes les applis du hub)</div>
   <div class="k-grid2">${f('cOwner', 'Propriétaire', g.owner, 'autocapitalize="off"')}${f('cRepo', 'Dépôt', g.repo, 'autocapitalize="off"')}</div>
   ${f('cBranch', 'Branche', g.branch, 'autocapitalize="off"')}
   ${f('cToken', 'Jeton (Contents : lecture et écriture)', g.token, 'type="password" autocomplete="off"')}
+  <div class="k-btns" style="margin:-2px 0 12px"><button type="button" class="k-btn line" id="cLogin">Activer le login (autre appareil)</button></div>
   ${AI_APPS.includes(CURRENT_APP) ? `<div class="k-sec acc">IA (scan Paperasse, photo Collections, catégories Cha-cha)</div>
   ${f('cAi', 'Clé API Gemini (Google AI Studio)', a.key, 'type="password" autocomplete="off" placeholder="AIza…"')}
   <div class="k-field"><label for="cModel">Modèle</label><select id="cModel">${AI_MODELS.map(([v, l]) => `<option value="${v}" ${v === a.model ? 'selected' : ''}>${l}</option>`).join('')}</select></div>` : ''}
@@ -534,6 +612,7 @@ export function commonSettingsHTML() {
 }
 export function bindCommonSettings(body, { onSaved } = {}) {
   $$('[data-th]', body).forEach(b => b.onclick = () => { $$('[data-th]', body).forEach(x => x.classList.toggle('on', x === b)); });
+  if ($('#cLogin', body)) $('#cLogin', body).onclick = () => loginSetupSheet();
   const collect = () => {
     setGH({ owner: $('#cOwner', body).value.trim(), repo: $('#cRepo', body).value.trim(), branch: $('#cBranch', body).value.trim() || 'main', token: $('#cToken', body).value.trim() });
     if ($('#cAi', body)) setAI({ key: $('#cAi', body).value.trim(), model: $('#cModel', body).value });
@@ -651,7 +730,8 @@ async function wipeDevice() {
   try { sessionStorage.clear(); } catch { }
   for (const db of ['paperasse-media', 'collections-media']) { try { indexedDB.deleteDatabase(db); } catch { } }
   try { for (const c of await caches.keys()) if (/^(gestion|violette)-/.test(c)) await caches.delete(c); } catch { }
-  try { for (const r of await navigator.serviceWorker.getRegistrations()) await r.unregister(); } catch { }
+  // Même site que Cerveau et Phant : ne retirer que le service worker de cette appli
+  try { const here = new URL('./', location.href).href; for (const r of await navigator.serviceWorker.getRegistrations()) if (r.scope.startsWith(here)) await r.unregister(); } catch { }
 }
 export function logoutDevice() {
   const pend = unsyncedApps(), gh = ghReady();
