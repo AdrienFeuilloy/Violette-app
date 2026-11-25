@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Quotidien">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="stylesheet" href="ui/kit.css">
+<title>Gestion quotidien</title>
+<style>
+.q-card{position:relative;margin-top:6px}
+.q-card .k-cat{position:absolute;right:22px;top:-44px;z-index:1}
+.q-inner{position:relative;z-index:2;display:flex;gap:12px;align-items:center;background:var(--card);border-radius:18px;padding:14px;box-shadow:var(--shadow);-webkit-mask:radial-gradient(circle 33px at calc(100% - 62px) 0,transparent 32px,#000 33px);mask:radial-gradient(circle 33px at calc(100% - 62px) 0,transparent 32px,#000 33px)}
+.q-date{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;color:#fff;font-weight:800;line-height:1;text-align:center;flex:none}
+.q-date small{display:block;font-size:8px;letter-spacing:.5px}
+.q-k{font-size:9.5px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase}
+.glance .k-row{text-decoration:none;color:inherit}
+.foot{text-align:center;color:var(--mut);font-size:11.5px;margin:22px 0 6px}
+</style>
+</head>
+<body>
+<header id="hero"></header>
+<main class="k-wrap">
+  <div id="quest"></div>
+  <div class="k-sec">En un coup d'œil</div>
+  <div class="k-card flush glance" id="glance"></div>
+  <p class="foot">Gestion quotidien · v2.0.0</p>
+</main>
+<script type="module">
+import { initApp, hero, APPS, icon, rocket, esc, read, todayISO, daysTo, frDate, eur, openCommonSettings, $, isISO, ghReady, ghGetJSON } from './ui/kit.js';
+initApp('hub');
+
+const prefs = read('hub.prefs', {}) || {};
+const d = new Date();
+const greet = (d.getHours() < 5 || d.getHours() >= 18) ? 'Bonsoir' : 'Bonjour';
+let wx = read('hub.weather', null);
+
+function drawHero() {
+  const sub = d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }) + (wx && wx.date === todayISO() ? ` · ${Math.round(wx.t)}°` : '');
+  hero($('#hero'), {
+    app: 'hub', title: `${greet}${prefs.name ? ' ' + prefs.name : ''} !`, sub,
+    actions: `<button class="k-ibtn" id="set" aria-label="Réglages">⚙︎</button>`,
+    rings: APPS.map(a => ({ label: a.name, href: a.href, color: a.color, html: icon(a.icon, { size: 28 }) })),
+    perRow: innerWidth < 360 ? 3 : innerWidth < 600 ? 5 : 9,
+    after: el => { $('#set', el).onclick = settings; }
+  });
+}
+
+// --- Résumés lus dans les données locales de chaque app ---
+// Sur un nouvel appareil, les données qui ne sont pas encore là sont lues dans le dépôt GitHub (en mémoire seulement).
+const remote = {};
+async function warmRemote() {
+  if (!ghReady()) return;
+  const want = [['violette', 'violette_stocks', (read('violette_github', {}) || {}).path || 'JSON_VIOLETTE.json'], ['collections', 'collections.data.v1', 'JSON_COLLECTIONS.json'], ['paperasse', 'paperasse.data.v1', 'JSON_PAPERASSE.json'], ['habits', 'habits.data.v1', 'JSON_HABITS.json']].filter(([, k]) => !read(k, null));
+  if (!want.length) return;
+  await Promise.all(want.map(async ([id, , path]) => { try { const r = await ghGetJSON(path); if (r?.json) remote[id] = r.json; } catch { } }));
+  drawBody(); if (remote.habits) { wx = null; weather(); }
+}
+function summaries() {
+  const out = [], urgent = [];
+  // Violette
+  const st = read('violette_stocks', null) || remote.violette?.stocks || [];
+  const pots = st.reduce((n, s) => n + (Number(s.qty) || 0), 0);
+  out.push({ app: 'violette', line: st.length ? `${pots} pot${pots > 1 ? 's' : ''} en stock` : 'Purées, stocks & menus' });
+  // Habits
+  const h = read('hub.summary.habits', null);
+  out.push({ app: 'habits', line: h && h.date === todayISO() ? h.line : 'Voir la tenue du jour' });
+  // Collections
+  const co = read('collections.data.v1', null) || remote.collections;
+  const nCo = co?.items?.filter(i => i.status === 'possede').length || 0;
+  const lent = co?.items?.filter(i => i.loan).length || 0;
+  out.push({ app: 'collections', line: co ? `${nCo} objets${lent ? ` · ${lent} prêté${lent > 1 ? 's' : ''}` : ''}` : 'Ta collection' });
+  // Paperasse
+  const pa = read('paperasse.data.v1', null) || remote.paperasse;
+  const due = (pa?.docs || []).filter(x => x.status === 'a_traiter' && isISO(x.dueDate)).map(x => ({ ...x, days: daysTo(x.dueDate) })).sort((a, b) => a.days - b.days);
+  const soon = due.filter(x => x.days <= 7);
+  out.push({ app: 'paperasse', line: soon.length ? `${soon.length} échéance${soon.length > 1 ? 's' : ''} sous 7 jours` : 'Rien d’urgent', alert: soon.some(x => x.days < 0) });
+  if (soon[0]) urgent.push({ app: 'paperasse', title: soon[0].title, sub: `${soon[0].days < 0 ? 'en retard de ' + (-soon[0].days) + ' j' : soon[0].days === 0 ? "aujourd'hui" : 'dans ' + soon[0].days + ' j'}${soon[0].amount ? ' · ' + eur(soon[0].amount) : ''}`, date: soon[0].dueDate, k: 'Quête du jour' });
+  // Budget, Garage, Colis : résumés publiés par les apps
+  for (const id of ['budget', 'garage', 'colis', 'animaux', 'plantes']) {
+    const s = read('hub.summary.' + id, null);
+    out.push({ app: id, line: s?.line || APPS.find(a => a.id === id).sub, alert: s?.alert });
+    if (s?.urgent) urgent.push({ app: id, ...s.urgent });
+  }
+  const order = APPS.map(a => a.id);
+  out.sort((a, b) => order.indexOf(a.app) - order.indexOf(b.app));
+  urgent.sort((a, b) => (a.late ? 0 : 1) - (b.late ? 0 : 1));
+  return { out, urgent };
+}
+
+function drawBody() {
+  const { out, urgent } = summaries();
+  const q = urgent[0];
+  if (q) {
+    const a = APPS.find(x => x.id === q.app);
+    const dt = isISO(q.date) ? new Date(q.date + 'T12:00:00') : null;
+    $('#quest').innerHTML = `<div class="q-card">${rocket('peek', .72)}<a class="q-inner" href="${a.href}" style="text-decoration:none;color:inherit">
+      <div class="q-date" style="background:${a.color}">${dt ? `<div>${dt.getDate()}<small>${dt.toLocaleDateString('fr-FR', { month: 'short' }).toUpperCase()}</small></div>` : icon(a.icon, { size: 24, color: '#fff', ink: '#fff' })}</div>
+      <div style="flex:1;min-width:0"><div class="q-k" style="color:${a.color}">${esc(q.k || 'À faire')}</div><b style="display:block;font-size:14px">${esc(q.title)}</b><small style="color:var(--mut)">${esc(q.sub || '')}</small></div>
+      <span class="k-btn sm" style="background:${a.color};margin-top:18px">Voir</span></a></div>`;
+  } else {
+    $('#quest').innerHTML = `<div class="k-card" style="display:flex;align-items:center;gap:14px">${rocket('sleep', .7)}<div><b>Rien d'urgent aujourd'hui</b><div class="k-hint">Rocket fait la sieste. Toi aussi ?</div></div></div>`;
+  }
+  $('#glance').innerHTML = out.map(o => {
+    const a = APPS.find(x => x.id === o.app);
+    return `<a class="k-row" href="${a.href}"><span class="k-ico" style="background:${a.color}22">${icon(a.icon, { size: 22 })}</span>
+      <span class="k-main"><b>${esc(a.name)}</b><small>${esc(o.line)}</small></span>${o.alert ? '<span class="k-tag bad">!</span>' : ''}<span style="color:var(--mut)">›</span></a>`;
+  }).join('');
+}
+
+function settings() {
+  const extra = `<div class="k-sec acc">Accueil</div><div class="k-field"><label for="hName">Ton prénom (message d'accueil)</label><input id="hName" value="${esc(prefs.name || '')}"></div>`;
+  openCommonSettings(extra, (body, saving) => { if (saving) { prefs.name = $('#hName', body).value.trim(); localStorage.setItem('hub.prefs', JSON.stringify({ ...(read('hub.prefs', {}) || {}), name: prefs.name })); } });
+}
+addEventListener('k-settings', () => location.reload());
+addEventListener('k-hubprefs', () => location.reload());
+
+// Météo rapide pour l'en-tête (même source qu'Habits)
+async function weather() {
+  if (wx && wx.date === todayISO() && Date.now() - wx.at < 30 * 60e3) return;
+  const loc = (read('habits.data.v1', {}) || {}).settings?.loc || remote.habits?.settings?.loc || { lat: 48.8566, lon: 2.3522 };
+  try {
+    const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lon}&current=temperature_2m&timezone=Europe%2FParis`);
+    const j = await r.json();
+    wx = { t: j.current.temperature_2m, date: todayISO(), at: Date.now() };
+    localStorage.setItem('hub.weather', JSON.stringify(wx)); drawHero();
+  } catch { }
+}
+
+drawHero(); drawBody(); weather(); warmRemote();
+addEventListener('k-summaries', () => drawBody());
+addEventListener('pageshow', drawBody);
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
+</script>
+</body>
+</html>

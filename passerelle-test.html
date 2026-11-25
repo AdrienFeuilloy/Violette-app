@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#5b21b6">
+<title>Passerelle Budget — banc d'essai</title>
+<style>
+:root{--bg:#f6f5fb;--card:#fff;--ink:#1e1b2e;--muted:#6b6880;--line:#e7e4f0;--violet:#6d28d9;--soft:#ede9fe;--sh:0 1px 2px rgba(30,27,46,.06),0 4px 14px rgba(76,29,149,.07)}
+@media (prefers-color-scheme:dark){:root{--bg:#121019;--card:#1c1927;--ink:#efeef6;--muted:#a19db5;--line:#2c2839;--soft:#2a2141}}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,sans-serif}
+header{background:linear-gradient(135deg,#5b21b6,#7c3aed 60%,#a855f7);color:#fff;padding:14px 16px;display:flex;gap:10px;align-items:center}
+header a{color:#fff;text-decoration:none;background:rgba(255,255,255,.18);border-radius:10px;padding:6px 10px}
+header h1{font-size:17px;margin:0;flex:1}
+main{max-width:760px;margin:0 auto;padding:14px}
+.card{background:var(--card);border-radius:14px;box-shadow:var(--sh);padding:12px;margin-bottom:10px}
+h2{font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin:20px 2px 8px}
+.m{display:flex;justify-content:space-between;gap:10px;align-items:center}
+.m small{color:var(--muted);display:block}
+.pill{font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;background:var(--soft);color:var(--violet);white-space:nowrap}
+.btn{border:0;border-radius:12px;padding:10px 14px;font-weight:600;background:var(--violet);color:#fff;cursor:pointer}
+.btn.ghost{background:var(--soft);color:var(--violet)}
+pre{background:var(--card);border-radius:12px;padding:12px;overflow:auto;font-size:12px;box-shadow:var(--sh)}
+.hint{color:var(--muted);font-size:12px}
+</style>
+</head>
+<body>
+<header><a href="./paperasse.html">‹ Paperasse</a><h1>Passerelle Budget · banc d'essai</h1></header>
+<main>
+  <p class="hint">Cette page joue le rôle de l'appli Budget : elle montre exactement ce que Budget recevra de Paperasse, et peut simuler l'import pour vérifier les ✓ côté Paperasse.</p>
+  <div class="card" id="state">Chargement…</div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="sim">Simuler l'import dans Budget</button><button class="btn ghost" id="reload">Recharger</button><button class="btn ghost" id="json">Voir le JSON</button></div>
+  <div id="out"></div>
+</main>
+<script type="module">
+import { Passerelle, PASSERELLE_VERSION } from './passerelle-budget.js';
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const eur = n => Number(n).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' });
+const fr = iso => iso ? new Date(iso + 'T12:00:00').toLocaleDateString('fr-FR') : '';
+const p = new Passerelle();
+let last = null;
+const row = (m, tag) => `<div class="card m"><div><b>${esc(m.libelle)}</b><small>${esc(m.tiers)} · ${esc(m.categorieBudget)}${m.recurrence ? ' · ' + esc(m.recurrence) : ''}</small><small>${m.statut === 'payee' ? 'Payé' : 'Prévu'} le ${fr(m.date)} · <code>${esc(m.key)}</code></small></div><div style="text-align:right"><b>${eur(m.montant)}</b><br><span class="pill">${tag}</span></div></div>`;
+async function load() {
+  $('#state').textContent = 'Chargement…';
+  last = await p.aImporter();
+  const { nouveaux, modifies, supprimes, toutes } = last;
+  const prevu = toutes.filter(m => m.statut === 'prevue').reduce((s, m) => s + m.montant, 0);
+  const paye = toutes.filter(m => m.statut === 'payee').reduce((s, m) => s + m.montant, 0);
+  $('#state').innerHTML = `<b>${toutes.length}</b> mouvements issus de Paperasse · prévu <b>${eur(prevu)}</b> · payé <b>${eur(paye)}</b><br><span class="hint">Passerelle ${PASSERELLE_VERSION} · ${p.enLigne ? 'GitHub connecté' : 'mode local (cet appareil uniquement)'}</span>`;
+  $('#out').innerHTML =
+    `<h2>Nouveaux (${nouveaux.length})</h2>${nouveaux.map(m => row(m, 'nouveau')).join('') || '<p class="hint">—</p>'}` +
+    `<h2>Modifiés (${modifies.length})</h2>${modifies.map(m => row(m, 'à mettre à jour')).join('') || '<p class="hint">—</p>'}` +
+    `<h2>Supprimés côté Paperasse (${supprimes.length})</h2>${supprimes.map(s => `<div class="card"><code>${esc(s.key)}</code></div>`).join('') || '<p class="hint">—</p>'}`;
+  $('#sim').disabled = !(nouveaux.length + modifies.length + supprimes.length);
+}
+$('#reload').onclick = load;
+$('#json').onclick = () => { $('#out').innerHTML = `<h2>Ce que reçoit Budget</h2><pre>${esc(JSON.stringify(last, null, 2))}</pre>`; };
+$('#sim').onclick = async () => {
+  $('#sim').disabled = true;
+  try {
+    await p.confirmer([
+      ...last.nouveaux.map(m => ({ key: m.key, budgetId: 'test-' + Math.random().toString(36).slice(2, 8) })),
+      ...last.modifies.map(m => ({ key: m.key, budgetId: m.budgetId })),
+      ...last.supprimes.map(s => ({ key: s.key, budgetId: s.budgetId, supprime: true })),
+    ]);
+  } catch (e) { alert('Erreur : ' + e.message); }
+  load();
+};
+load();
+</script>
+</body>
+</html>

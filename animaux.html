@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="ui/kit.css">
+<title>Animaux</title>
+<style>
+.ani-ring b{font-size:20px}
+.spark{width:100%;height:90px;display:block}
+.menu{display:grid;gap:8px}
+.menu button{display:flex;gap:12px;align-items:center;border:0;background:var(--card);border-radius:14px;padding:13px;box-shadow:var(--shadow);text-align:left;font-weight:700}
+.menu button span{font-size:22px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:13.5px}
+.kv dt{color:var(--mut)}.kv dd{margin:0}
+.pre{white-space:pre-wrap;font-size:13px}
+</style>
+</head>
+<body>
+<header id="hero"></header>
+<main class="k-wrap" id="main"></main>
+<script type="module">
+import { initApp, publishSummary, hero, DocSync, read, write, esc, $, $$, uid, now, todayISO, isISO, frDate, daysTo, addMonths, openSheet, closeSheet, toast, bubble, openCommonSettings, nav, rocket, norm } from './ui/kit.js';
+initApp('animaux');
+
+/* ---------- Données de départ (export Airtable « ANIMAUX ») ---------- */
+// Données de départ : rangées dans le dépôt privé (JSON_ANIMAUX.json), jamais dans ce code public.
+const seed = () => ({ app: 'animaux', schema: 1, animals: [], weights: [], visits: [], treatments: [], tombstones: {}, settings: {}, settingsAt: 0, updatedAt: 0 });
+const store = new DocSync({ key: 'animaux.data.v1', path: 'JSON_ANIMAUX.json', label: 'Animaux', lists: ['animals', 'weights', 'visits', 'treatments'], empty: seed, onRemote: () => render() });
+const D = () => store.data;
+if (!read('animaux.data.v1')) store.save();
+
+const SPECIES = { Chat: '#26233a', Lapin: '#b07a45', Pogona: '#22b35e' };
+/* ---------- Portraits (PDP) ---------- */
+// Chaque compagnon a son portrait ; un nouvel animal reçoit celui de son espèce.
+const LOOKS = {
+  rocket: { kind: 'chat', fur: '#111', eye: '#f5f0e6', bg: '#ffe2cf' },
+  raya: { kind: 'chat', fur: '#fbf8f2', eye: '#26233a', patch: '#9a96a2', bg: '#dfe9ff', line: '#d9d2c4' },
+  capu: { kind: 'belier', fur: '#9a99a3', ear: '#83828d', bg: '#ffe7f0' },
+  whisky: { kind: 'lion', fur: '#a86c3a', mane: '#8a5428', bg: '#fff1c9' },
+  alfred: { kind: 'pogona', fur: '#d9b779', dark: '#b08a4e', bg: '#dff5e5' },
+};
+const SPECIES_LOOK = { chat: { kind: 'chat', fur: '#e8a35c', eye: '#26233a', bg: '#ffe2cf' }, lapin: { kind: 'belier', fur: '#c9b8a3', ear: '#b3a18b', bg: '#ffe7f0' }, pogona: LOOKS.alfred };
+function looks(a) { return LOOKS[norm(a.name)] || SPECIES_LOOK[norm(a.species)] || { kind: 'autre', fur: 'var(--acc)', bg: 'var(--soft)' }; }
+function avatar(a, size = 52) {
+  const L = looks(a), st = L.line ? ` stroke="${L.line}" stroke-width="1.6"` : '';
+  let g = '';
+  if (L.kind === 'chat') g = `<path d="M17 44 C14 30 16 22 19 13 L28 22 Q32 21 36 22 L45 13 C48 22 50 30 47 44 Q32 54 17 44Z" fill="${L.fur}"${st}/>`
+    + (L.patch ? `<path d="M40 22.6 L45 13 C47.5 20 48.4 25 48.6 30 Q43 30 38 25Z" fill="${L.patch}"/>` : '')
+    + `<ellipse cx="25.5" cy="34" rx="3.2" ry="4" fill="${L.eye}"/><ellipse cx="38.5" cy="34" rx="3.2" ry="4" fill="${L.eye}"/><path d="M30.5 40.5 L33.5 40.5 L32 42.2Z" fill="${L.fur === '#111' ? '#f5f0e6' : '#e88a8a'}"/>`;
+  else if (L.kind === 'belier') g = `<ellipse cx="32" cy="36" rx="14" ry="13" fill="${L.fur}"/><path d="M19 27 C10 30 9 44 14 50 C18 52 21 48 21 42 Z" fill="${L.ear}"/><path d="M45 27 C54 30 55 44 50 50 C46 52 43 48 43 42 Z" fill="${L.ear}"/><ellipse cx="32" cy="24" rx="9" ry="4" fill="${L.ear}"/><circle cx="26.5" cy="35" r="2.6" fill="#26233a"/><circle cx="37.5" cy="35" r="2.6" fill="#26233a"/><path d="M30.5 41 L33.5 41 L32 42.8Z" fill="#e88a8a"/>`;
+  else if (L.kind === 'lion') g = [...Array(12)].map((_, i) => { const t = i / 12 * Math.PI * 2; return `<circle cx="${(32 + Math.cos(t) * 15).toFixed(1)}" cy="${(35 + Math.sin(t) * 14).toFixed(1)}" r="6.5" fill="${L.mane}"/>`; }).join('')
+    + `<rect x="24" y="8" width="6" height="16" rx="3" fill="${L.fur}" transform="rotate(-10 27 20)"/><rect x="34" y="8" width="6" height="16" rx="3" fill="${L.fur}" transform="rotate(10 37 20)"/><circle cx="32" cy="36" r="12" fill="${L.fur}"/><circle cx="27.5" cy="35" r="2.5" fill="#26233a"/><circle cx="36.5" cy="35" r="2.5" fill="#26233a"/><path d="M30.5 40.5 L33.5 40.5 L32 42.2Z" fill="#e88a8a"/>`;
+  else if (L.kind === 'pogona') g = `<path d="M8 44 C10 32 22 24 36 24 C46 24 55 30 57 37 C55 42 46 45 36 46 C26 47 16 47 8 44Z" fill="${L.fur}"/><path d="M20 28 L24 33 M28 25.5 L31 31 M36 24.5 L37.5 30" stroke="${L.dark}" stroke-width="3" stroke-linecap="round"/><path d="M14 44 Q30 52 48 44" stroke="${L.dark}" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-dasharray="1 4"/><circle cx="44" cy="33" r="3" fill="#26233a"/><circle cx="45" cy="32" r=".9" fill="#fff"/><path d="M50 39 Q54 39 56 37.5" stroke="${L.dark}" stroke-width="1.6" fill="none" stroke-linecap="round"/>`;
+  else g = `<text x="32" y="41" text-anchor="middle" font-size="24" font-weight="800" fill="${L.fur}">${esc((a.name || '?')[0])}</text>`;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 64 64" aria-hidden="true"><defs><clipPath id="avc"><circle cx="32" cy="32" r="32"/></clipPath></defs><circle cx="32" cy="32" r="32" fill="${L.bg}"/><g clip-path="url(#avc)">${g}</g></svg>`;
+}
+
+const A = id => D().animals.find(a => a.id === id);
+const active = () => D().animals.filter(a => !a.archived);
+const age = iso => { if (!isISO(iso)) return ''; const b = new Date(iso), n = new Date(); let y = n.getFullYear() - b.getFullYear(), m = n.getMonth() - b.getMonth(); if (n.getDate() < b.getDate()) m--; if (m < 0) { y--; m += 12; } return y ? `${y} an${y > 1 ? 's' : ''}${m ? ' ' + m + ' mois' : ''}` : `${m} mois`; };
+const lastWeight = aid => D().weights.filter(w => w.animalId === aid).sort((a, b) => b.date.localeCompare(a.date))[0];
+const pending = () => D().treatments.filter(t => !t.done && isISO(t.due) && A(t.animalId) && !A(t.animalId).archived).map(t => ({ ...t, days: daysTo(t.due) })).sort((a, b) => a.days - b.days);
+const whenTxt = d => d < 0 ? `en retard de ${-d} j` : d === 0 ? "aujourd'hui" : `dans ${d} j`;
+
+/* ---------- Affichage ---------- */
+function render() {
+  const P = pending(), late = P.filter(t => t.days < 0);
+  hero($('#hero'), {
+    app: 'animaux', title: 'Animaux', sub: '‹ Accueil', subHref: './index.html',
+    actions: store.pill() + `<button class="k-ibtn" id="set" aria-label="Réglages">⚙︎</button>`,
+    rings: active().map(a => ({ label: a.name, html: avatar(a, 52), on: () => openAnimal(a.id) })),
+    perRow: 5,
+    after: el => { store.bindPills(el); $('#set', el).onclick = settings; }
+  });
+  const tip = late.length ? `${late.length} rappel${late.length > 1 ? 's' : ''} en retard : ${late.slice(0, 2).map(t => t.name.toLowerCase() + ' de ' + A(t.animalId).name).join(', ')}. Je préviens, je ne fais pas les piqûres !`
+    : P[0] ? `Prochain rappel : ${P[0].name.toLowerCase()} de ${A(P[0].animalId).name} (${whenTxt(P[0].days)}).` : 'Tout le monde est à jour. On peut faire la sieste.';
+  const visits = [...D().visits].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5);
+  $('#main').innerHTML = bubble(esc(tip)) + `
+    <div class="k-sec acc">Rappels</div>
+    ${P.length ? `<div class="k-card flush">${P.map(t => `<div class="k-row" data-tr="${t.id}"><span class="k-dot full" style="${t.days < 0 ? 'border-color:var(--bad);background:var(--bad)' : t.days <= 30 ? 'border-color:var(--warn);background:var(--warn)' : ''}"></span>
+      <span class="k-main"><b>${esc(t.name)} · ${esc(A(t.animalId).name)}</b><small>${frDate(t.due)} · ${whenTxt(t.days)}</small></span><button class="k-btn sm" data-done="${t.id}">Fait</button></div>`).join('')}</div>` : '<div class="k-empty">Aucun rappel en attente.</div>'}
+    <div class="k-sec">Mes animaux</div>
+    <div class="k-card flush">${active().map(a => { const w = lastWeight(a.id); return `<button class="k-row" data-a="${a.id}"><span class="k-ico" style="background:none;padding:0;overflow:hidden">${avatar(a, 40)}</span><span class="k-main"><b>${esc(a.name)}</b><small>${esc([a.species, a.breed, age(a.birth)].filter(Boolean).join(' · '))}</small></span><span class="k-side">${w ? w.kg.toLocaleString('fr-FR') + ' kg' : ''}</span></button>`; }).join('')}</div>
+    <div class="k-sec">Derniers rendez-vous</div>
+    <div class="k-card flush">${visits.map(v => `<button class="k-row" data-v="${v.id}"><span class="k-main"><b>${esc(A(v.animalId)?.name || '?')} · ${esc(v.reasons.join(', ') || 'Visite')}</b><small>${frDate(v.date)}${v.vet ? ' · Dr ' + esc(v.vet) : ''}</small></span></button>`).join('')}</div>
+    ${D().animals.some(a => a.archived) ? `<div class="k-sec">Anciens compagnons</div><div class="k-card flush">${D().animals.filter(a => a.archived).map(a => `<button class="k-row" data-a="${a.id}"><span class="k-main"><b>${esc(a.name)}</b><small>${esc(a.species || 'Souvenir')}</small></span></button>`).join('')}</div>` : ''}`;
+  $$('[data-a]').forEach(b => b.onclick = () => openAnimal(b.dataset.a));
+  $$('[data-v]').forEach(b => b.onclick = () => openVisit(b.dataset.v));
+  $$('[data-done]').forEach(b => b.onclick = e => { e.stopPropagation(); doneTreat(b.dataset.done); });
+  $$('[data-tr]').forEach(b => b.onclick = () => editTreat(D().treatments.find(t => t.id === b.dataset.tr)));
+  publishSummary('animaux', { line: late.length ? `${late.length} rappel${late.length > 1 ? 's' : ''} en retard` : P[0] ? `Prochain : ${P[0].name.toLowerCase()} de ${A(P[0].animalId).name}` : 'Tout le monde est à jour', alert: !!late.length,
+    urgent: P[0] && P[0].days <= 14 ? { title: `${P[0].name} · ${A(P[0].animalId).name}`, sub: whenTxt(P[0].days), date: P[0].due, k: 'Animaux', late: P[0].days < 0 } : null });
+}
+function doneTreat(id) {
+  const t = D().treatments.find(x => x.id === id); if (!t) return;
+  t.done = true; t.doneAt = todayISO(); t.updatedAt = now();
+  const next = { id: uid(), animalId: t.animalId, name: t.name, date: todayISO(), due: t.every ? addMonths(todayISO(), t.every) : '', every: t.every, done: false, createdAt: now(), updatedAt: now() };
+  if (next.due) D().treatments.push(next);
+  store.save(); render(); toast(next.due ? `C'est noté ✓ Prochain rappel le ${frDate(next.due)}` : 'C\'est noté ✓');
+}
+
+/* ---------- Fiche animal ---------- */
+function spark(ws) {
+  if (ws.length < 2) return ws.length ? `<p class="k-hint">Une seule pesée : ${ws[0].kg} kg le ${frDate(ws[0].date)}</p>` : '<p class="k-hint">Aucune pesée.</p>';
+  const W = 320, H = 90, xs = ws.map(w => new Date(w.date).getTime()), ys = ws.map(w => w.kg);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys) * .97, y1 = Math.max(...ys) * 1.02;
+  const P = ws.map((w, i) => [10 + (xs[i] - x0) / (x1 - x0 || 1) * (W - 20), H - 12 - (w.kg - y0) / (y1 - y0 || 1) * (H - 24)]);
+  return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><polyline points="${P.map(p => p.join(',')).join(' ')}" fill="none" stroke="var(--acc)" stroke-width="2.5" stroke-linejoin="round"/>${P.map(p => `<circle cx="${p[0]}" cy="${p[1]}" r="3.5" fill="var(--acc)"/>`).join('')}</svg>
+    <div class="k-hint" style="display:flex;justify-content:space-between"><span>${frDate(ws[0].date)} · ${ws[0].kg} kg</span><span>${frDate(ws.at(-1).date)} · <b>${ws.at(-1).kg} kg</b></span></div>`;
+}
+function openAnimal(id) {
+  const a = A(id); if (!a) return;
+  const ws = D().weights.filter(w => w.animalId === id).sort((x, y) => x.date.localeCompare(y.date));
+  const vs = D().visits.filter(v => v.animalId === id).sort((x, y) => y.date.localeCompare(x.date));
+  const ts = D().treatments.filter(t => t.animalId === id).sort((x, y) => (y.due || '').localeCompare(x.due || ''));
+  const body = openSheet(a.name, `
+    <div style="text-align:center">${avatar(a, 96)}${a.name === 'Rocket' ? '<div class="k-hint">La mascotte officielle 🐾</div>' : ''}</div>
+    <div class="k-card"><dl class="kv">${[['Espèce', a.species], ['Race', a.breed], ['Né(e) le', a.birth && `${frDate(a.birth)} (${age(a.birth)})`], ['Sexe', a.sex], ['Identification', a.ident], ['Stérilisé(e)', a.sterilized ? 'Oui' : ''], ['Notes', a.notes]].filter(r => r[1]).map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('')}</dl></div>
+    <div class="k-sec acc">Poids</div><div class="k-card">${spark(ws)}</div>
+    <div class="k-sec acc">Traitements</div>${ts.length ? `<div class="k-card flush">${ts.map(t => `<div class="k-row"><span class="k-main"><b>${esc(t.name)}</b><small>${t.date ? 'fait le ' + frDate(t.date) : ''}${t.due ? ' · rappel ' + frDate(t.due) : ''}</small></span>${t.done ? '<span class="k-tag ok">Fait</span>' : `<span class="k-tag ${daysTo(t.due) < 0 ? 'bad' : ''}">${whenTxt(daysTo(t.due))}</span>`}</div>`).join('')}</div>` : '<p class="k-hint">Aucun.</p>'}
+    <div class="k-sec acc">Rendez-vous</div>${vs.length ? `<div class="k-card flush">${vs.map(v => `<button class="k-row" data-v="${v.id}"><span class="k-main"><b>${esc(v.reasons.join(', ') || 'Visite')}</b><small>${frDate(v.date)}${v.vet ? ' · Dr ' + esc(v.vet) : ''}</small></span></button>`).join('')}</div>` : '<p class="k-hint">Aucun.</p>'}
+    <div class="k-btns" style="margin-top:10px"><button class="k-btn ghost" id="aW">⚖️ Pesée</button><button class="k-btn ghost" id="aV">🩺 RDV</button><button class="k-btn ghost" id="aT">💉 Rappel</button></div>
+    <div class="k-btns" style="margin-top:8px"><button class="k-btn line" id="aE">Modifier</button><button class="k-btn line" id="aX">${a.archived ? 'Réactiver' : 'Archiver'}</button></div>`);
+  $$('[data-v]', body).forEach(b => b.onclick = () => openVisit(b.dataset.v));
+  $('#aW', body).onclick = () => addWeight(id);
+  $('#aV', body).onclick = () => editVisit(null, id);
+  $('#aT', body).onclick = () => editTreat(null, id);
+  $('#aE', body).onclick = () => editAnimal(a);
+  $('#aX', body).onclick = () => { a.archived = !a.archived; a.updatedAt = now(); store.save(); closeSheet(); render(); };
+}
+const animalSel = (sel) => `<div class="k-field"><label>Animal</label><select id="xA">${D().animals.filter(a => !a.archived || a.id === sel).map(a => `<option value="${a.id}" ${a.id === sel ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}</select></div>`;
+function addWeight(aid) {
+  const body = openSheet('Nouvelle pesée', `${animalSel(aid)}<div class="k-grid2"><div class="k-field"><label>Poids (kg)</label><input id="wK" inputmode="decimal" placeholder="ex. 5,25"></div><div class="k-field"><label>Date</label><input id="wD" type="date" value="${todayISO()}"></div></div><button class="k-btn block" id="wOk">Enregistrer</button>`);
+  $('#wOk', body).onclick = () => { const kg = parseFloat($('#wK', body).value.replace(',', '.')); if (!kg) return toast('Indique le poids'); D().weights.push({ id: uid(), animalId: $('#xA', body).value, date: $('#wD', body).value || todayISO(), kg, createdAt: now(), updatedAt: now() }); store.save(); closeSheet(); render(); toast('Pesée enregistrée ✓'); };
+}
+const vets = () => [...new Set(D().visits.map(v => v.vet).filter(Boolean))];
+function openVisit(id) {
+  const v = D().visits.find(x => x.id === id); if (!v) return;
+  const body = openSheet(`${A(v.animalId)?.name || ''} · ${frDate(v.date)}`, `<div class="k-card"><b>${esc(v.reasons.join(', ') || 'Visite')}</b>${v.vet ? `<div class="k-hint">Dr ${esc(v.vet)}</div>` : ''}${v.notes ? `<p class="pre">${esc(v.notes)}</p>` : ''}</div>
+    <div class="k-btns"><button class="k-btn line" id="vE">Modifier</button><button class="k-btn danger" id="vD">Supprimer</button></div>`);
+  $('#vE', body).onclick = () => editVisit(v);
+  $('#vD', body).onclick = () => { if (confirm('Supprimer ce rendez-vous ?')) { D().visits = D().visits.filter(x => x.id !== id); D().tombstones[id] = now(); store.save(); closeSheet(); render(); } };
+}
+function editVisit(v, aid) {
+  const isNew = !v; v = v ? { ...v } : { id: uid(), animalId: aid, date: todayISO(), reasons: [], notes: '', vet: vets()[0] || '', createdAt: now() };
+  const body = openSheet(isNew ? 'Rendez-vous vétérinaire' : 'Modifier le rendez-vous', `${animalSel(v.animalId)}
+    <div class="k-grid2"><div class="k-field"><label>Date</label><input id="vDt" type="date" value="${v.date}"></div><div class="k-field"><label>Vétérinaire</label><input id="vV" list="dlV" value="${esc(v.vet)}"><datalist id="dlV">${vets().map(x => `<option value="${esc(x)}">`).join('')}</datalist></div></div>
+    <div class="k-field"><label>Raisons (séparées par des virgules)</label><input id="vR" value="${esc(v.reasons.join(', '))}" placeholder="Vaccination, contrôle…"></div>
+    <div class="k-field"><label>Prescriptions / notes</label><textarea id="vN">${esc(v.notes)}</textarea></div>
+    <button class="k-btn block" id="vOk">Enregistrer</button>`);
+  $('#vOk', body).onclick = () => { Object.assign(v, { animalId: $('#xA', body).value, date: $('#vDt', body).value || todayISO(), vet: $('#vV', body).value.trim(), reasons: $('#vR', body).value.split(',').map(s => s.trim()).filter(Boolean), notes: $('#vN', body).value.trim(), updatedAt: now() });
+    const i = D().visits.findIndex(x => x.id === v.id); if (i >= 0) D().visits[i] = v; else D().visits.push(v); store.save(); closeSheet(); render(); toast('Rendez-vous enregistré ✓'); };
+}
+function editTreat(t, aid) {
+  const isNew = !t; t = t ? { ...t } : { id: uid(), animalId: aid || active()[0]?.id, name: '', date: todayISO(), due: '', every: 12, done: false, createdAt: now() };
+  const names = [...new Set(D().treatments.map(x => x.name))];
+  const body = openSheet(isNew ? 'Nouveau rappel' : t.name, `${animalSel(t.animalId)}
+    <div class="k-field"><label>Traitement</label><input id="tN" list="dlT" value="${esc(t.name)}"><datalist id="dlT">${names.map(x => `<option value="${esc(x)}">`).join('')}</datalist></div>
+    <div class="k-grid3"><div class="k-field"><label>Fait le</label><input id="tD" type="date" value="${t.date || ''}"></div><div class="k-field"><label>Rappel le</label><input id="tR" type="date" value="${t.due || ''}"></div><div class="k-field"><label>Tous les (mois)</label><input id="tE" type="number" value="${t.every || ''}"></div></div>
+    <div class="k-btns"><button class="k-btn" id="tOk">Enregistrer</button>${isNew ? '' : '<button class="k-btn danger" id="tDel">Supprimer</button>'}</div>`);
+  $('#tD', body).onchange = () => { const e = parseInt($('#tE', body).value); if (e && $('#tD', body).value) $('#tR', body).value = addMonths($('#tD', body).value, e); };
+  $('#tOk', body).onclick = () => { const n = $('#tN', body).value.trim(); if (!n) return toast('Indique le traitement');
+    Object.assign(t, { animalId: $('#xA', body).value, name: n, date: $('#tD', body).value, due: $('#tR', body).value, every: parseInt($('#tE', body).value) || null, updatedAt: now() });
+    const i = D().treatments.findIndex(x => x.id === t.id); if (i >= 0) D().treatments[i] = t; else D().treatments.push(t); store.save(); closeSheet(); render(); toast('Rappel enregistré ✓'); };
+  $('#tDel', body) && ($('#tDel', body).onclick = () => { if (confirm('Supprimer ce rappel ?')) { D().treatments = D().treatments.filter(x => x.id !== t.id); D().tombstones[t.id] = now(); store.save(); closeSheet(); render(); } });
+}
+function editAnimal(a) {
+  const isNew = !a; a = a ? { ...a } : { id: uid(), name: '', species: '', breed: '', birth: '', sex: '', ident: '', sterilized: false, notes: '', archived: false, createdAt: now() };
+  const f = (id, l, v, at = '') => `<div class="k-field"><label>${l}</label><input id="${id}" value="${esc(v)}" ${at}></div>`;
+  const body = openSheet(isNew ? 'Nouvel animal' : 'Modifier ' + a.name, `${f('eN', 'Nom', a.name)}<div class="k-grid2">${f('eS', 'Espèce', a.species, 'list="dlS"')}${f('eB', 'Race', a.breed)}</div><datalist id="dlS"><option value="Chat"><option value="Lapin"><option value="Pogona"><option value="Chien"></datalist>
+    <div class="k-grid2">${f('eD', 'Naissance', a.birth, 'type="date"')}${f('eX', 'Sexe', a.sex, 'list="dlX"')}</div><datalist id="dlX"><option value="Mâle"><option value="Femelle"></datalist>
+    ${f('eI', 'Identification (puce, tatouage…)', a.ident)}<label class="k-switch">Stérilisé(e) <input type="checkbox" id="eSt" ${a.sterilized ? 'checked' : ''}></label>
+    <div class="k-field"><label>Notes</label><textarea id="eT">${esc(a.notes || '')}</textarea></div><button class="k-btn block" id="eOk">Enregistrer</button>`);
+  $('#eOk', body).onclick = () => { const v = id => $('#' + id, body).value.trim(); if (!v('eN')) return toast('Indique le nom');
+    Object.assign(a, { name: v('eN'), species: v('eS'), breed: v('eB'), birth: v('eD'), sex: v('eX'), ident: v('eI'), sterilized: $('#eSt', body).checked, notes: v('eT'), updatedAt: now() });
+    const i = D().animals.findIndex(x => x.id === a.id); if (i >= 0) D().animals[i] = a; else D().animals.push(a); store.save(); closeSheet(); render(); };
+}
+function addMenu() {
+  const body = openSheet('Ajouter', `<div class="menu"><button data-m="w"><span>⚖️</span>Une pesée</button><button data-m="v"><span>🩺</span>Un rendez-vous vétérinaire</button><button data-m="t"><span>💉</span>Un traitement / rappel</button><button data-m="a"><span>🐾</span>Un nouvel animal</button></div>`);
+  $$('[data-m]', body).forEach(b => b.onclick = () => ({ w: () => addWeight(active()[0]?.id), v: () => editVisit(null, active()[0]?.id), t: () => editTreat(null), a: () => editAnimal(null) })[b.dataset.m]());
+}
+function settings() { openCommonSettings(); }
+addEventListener('k-settings', () => { store.sync(); render(); });
+const n = nav([{ id: 'home', label: 'Rappels' }, { id: 'pets', label: 'Animaux' }], { active: 'home', fab: true });
+n.onclick = e => { const b = e.target.closest('button'); if (!b) return; if (b.classList.contains('k-fab')) return addMenu(); if (b.dataset.tab === 'pets') $('.k-sec:nth-of-type(2)')?.scrollIntoView({ behavior: 'smooth' }); else scrollTo({ top: 0, behavior: 'smooth' }); };
+render(); store.sync();
+</script>
+</body>
+</html>
