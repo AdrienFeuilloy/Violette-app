@@ -50,6 +50,9 @@ En bas de chaque appli, deux liens discrets : **✦ Visite guidée** (une série
 
 ## Historique
 
+### v2.13.0
+- Violette : bouton « 📜 Historique » en haut à droite des Menus. Tableau des repas pris, une ligne par jour, une colonne par repas, rempli à chaque « ✓ Repas pris » (annulé avec ↶). Enregistré dans `history` du JSON.
+
 ### v2.12.0
 - Connexion propre au hub : écran identifiant + mot de passe sur un nouvel appareil, sans dépendre de Cerveau.
 - La déconnexion et les mises à jour ne touchent plus aux autres applis du même site (Cerveau, Phant).

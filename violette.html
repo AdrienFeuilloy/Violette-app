@@ -148,7 +148,7 @@ body:has(.modal.active){overflow:hidden}
 .day .meals{padding:0 12px 12px;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr))}
 @media (pointer:coarse){.q-btn{width:38px;height:38px}.btn.sm{min-height:38px}.modal-close{width:40px;height:40px}}
 @media (max-width:360px){.sel-grid{grid-template-columns:1fr}.main{padding:12px}}
-@media (max-width:480px){.stock-table th:nth-child(3),.stock-table td:nth-child(3){display:none}}
+@media (max-width:480px){.stock-table:not(#histTable) th:nth-child(3),.stock-table:not(#histTable) td:nth-child(3){display:none}}
 @media (min-width:640px){.modal{align-items:center}.modal-box{border-radius:16px;max-height:86dvh}}
 @media (min-width:900px){
   .main{max-width:1040px}
@@ -295,12 +295,20 @@ hero(document.getElementById('hero'), {
     </div>
   </section>
 
+  <section id="tab-hist" class="tab">
+    <div class="card" style="padding:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px"><h2 style="font-size:1rem">Historique des repas</h2><button class="btn btn-gray sm" onclick="switchTab('menus')">← Menus</button></div>
+      <div style="overflow-x:auto"><table class="stock-table" id="histTable"></table></div>
+    </div>
+  </section>
+
   <!-- MENUS -->
   <section id="tab-menus" class="tab">
     <div class="card" style="padding:14px">
       <div class="menu-tools">
         <button class="btn btn-primary sm" onclick="autoFillWeek()">✨ Remplir les vides</button>
         <button class="btn btn-danger sm" onclick="clearWeek()">Vider</button>
+        <button class="btn btn-gray sm" style="flex:0 0 auto;margin-left:auto" onclick="switchTab('hist')">📜 Historique</button>
       </div>
       <div class="meal-toggles" id="mealToggles"></div>
       <p class="muted" style="margin-bottom:10px">Priorité : congelé depuis le plus longtemps, puis dernière consommation la plus ancienne. Déjeuner et dîner : légume + féculent + protéine. P'tit déj et goûter : fruit. Chaque jour, un aliment est « 🍳 à cuisiner frais », à tour de rôle sur les repas affichés (aliments de saison sous le seuil de stock bas en priorité). « ⇄ cru / cuit » change la préparation d'un aliment dans un repas. Tous les repas sont remplis, quitte à répéter un aliment ; les fruits à coque sont ajoutés en complément (1 cc, 2 fois par semaine).</p>
@@ -525,7 +533,7 @@ const normPlans = p => {
 };
 
 // ───────────── Données locales ─────────────
-const LS = { stocks: "violette_stocks", menus: "violette_menus", settings: "violette_settings", meta: "violette_meta", gh: "violette_github" };
+const LS = { stocks: "violette_stocks", menus: "violette_menus", settings: "violette_settings", meta: "violette_meta", hist: "violette_hist", gh: "violette_github" };
 const PLAN_FIELDS = ["breakfast", "lunch", "snack", "dinner", "fresh"];
 const TOMBSTONE_TTL = 120 * 864e5; // les suppressions sont mémorisées 120 jours
 
@@ -554,10 +562,12 @@ const normMeta = m => {
 };
 const normData = d => {
   const st = normStocks(d?.stocks);
-  return { stocks: st, plans: linkPlansWith(normPlans(d?.weeklyMealPlans || d?.plans), st), settings: normSettings(d?.settings), meta: normMeta(d?.meta) };
+  return { stocks: st, plans: linkPlansWith(normPlans(d?.weeklyMealPlans || d?.plans), st), settings: normSettings(d?.settings), meta: normMeta(d?.meta), hist: normHist(d?.history || d?.hist) };
 };
+// Historique des repas pris : "AAAA-MM-JJ.créneau" → { u: date de modif, foods: [noms] } ; foods vide = repas annulé
+const normHist = h => Object.fromEntries(Object.entries(h && typeof h === "object" ? h : {}).filter(([, v]) => v && Array.isArray(v.foods)));
 
-let stocks = [], plans = emptyWeek(), meta = normMeta(null);
+let stocks = [], plans = emptyWeek(), meta = normMeta(null), hist = {};
 let csvRawRows = [], csvHeaders = [];
 
 const DEFAULT_TARGETS = () => ({ breakfast: { "Fruit": 100 }, lunch: { "Légume": 100, "Féculent": 50, "Protéine": 10 }, snack: { "Fruit": 100 }, dinner: { "Légume": 100, "Féculent": 50, "Protéine": 10 } });
@@ -581,6 +591,7 @@ try {
   plans = linkPlansWith(normPlans(rd(LS.menus)), stocks);
   settings = normSettings(rd(LS.settings));
   meta = normMeta(rd(LS.meta));
+  hist = normHist(rd(LS.hist));
 } catch (e) { console.warn("Données locales illisibles", e); }
 
 function persistLocal() {
@@ -589,6 +600,7 @@ function persistLocal() {
     localStorage.setItem(LS.menus, JSON.stringify(plans));
     localStorage.setItem(LS.settings, JSON.stringify(settings));
     localStorage.setItem(LS.meta, JSON.stringify(meta));
+    localStorage.setItem(LS.hist, JSON.stringify(hist));
   } catch (e) {}
 }
 
@@ -622,8 +634,8 @@ function stampChanges() {
   return changed;
 }
 
-const currentData = () => ({ stocks, plans, settings, meta });
-const canon = d => stableStr({ stocks: d.stocks, plans: d.plans, settings: d.settings, meta: d.meta });
+const currentData = () => ({ stocks, plans, settings, meta, hist });
+const canon = d => stableStr({ stocks: d.stocks, plans: d.plans, settings: d.settings, meta: d.meta, hist: d.hist });
 
 // Fusion « le plus récent gagne », élément par élément (aliment, repas, réglages).
 function mergeData(L, R) {
@@ -641,7 +653,10 @@ function mergeData(L, R) {
     if (Math.max(lt, rt)) planU[k] = Math.max(lt, rt);
   });
   const useL = (L.meta.settingsU || 0) > (R.meta.settingsU || 0);
+  const mHist = { ...R.hist };
+  Object.entries(L.hist).forEach(([k, v]) => { if (!(mHist[k]?.u >= v.u)) mHist[k] = v; });
   return {
+    hist: JSON.parse(JSON.stringify(mHist)),
     stocks: JSON.parse(JSON.stringify(mStocks)),
     plans: mPlans,
     settings: normSettings(useL ? L.settings : R.settings),
@@ -650,7 +665,7 @@ function mergeData(L, R) {
 }
 
 function applyData(d) {
-  stocks = d.stocks; plans = d.plans; settings = d.settings; meta = d.meta;
+  stocks = d.stocks; plans = d.plans; settings = d.settings; meta = d.meta; hist = d.hist;
   linkPlanIds();
   persistLocal(); takeSnap(); renderAll();
 }
@@ -721,7 +736,7 @@ async function ghPut(text, sha) {
   return { sha: j.content?.sha };
 }
 
-const fileText = d => JSON.stringify({ app: "diversification-violette", schema: 2, savedAt: new Date().toISOString(), stocks: d.stocks, weeklyMealPlans: d.plans, settings: d.settings, meta: d.meta }, null, 1);
+const fileText = d => JSON.stringify({ app: "diversification-violette", schema: 2, savedAt: new Date().toISOString(), stocks: d.stocks, weeklyMealPlans: d.plans, settings: d.settings, meta: d.meta, history: d.hist }, null, 1);
 
 function scheduleSync(delay = 2500) {
   if (!ghReady()) return;
@@ -1472,6 +1487,8 @@ function slotAdd(d, slot, id, replace) {
 window.swapAlt = (d, slot, id) => slotAdd(d, slot, id, true);
 window.addAlt = (d, slot, id) => slotAdd(d, slot, id, false);
 
+// Date réelle du jour planifié dans la semaine en cours (samedi → vendredi) : un repas coché en retard reste à son jour
+const histKey = (d, slot) => { const t = new Date(); t.setDate(t.getDate() - dayIdx() + DAYS.findIndex(([k]) => k === d)); return `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}.${slot}`; };
 window.consumeMeal = function(d, slot) {
   const items = plans[d][slot] || [];
   if (!items.length) return;
@@ -1489,11 +1506,13 @@ window.consumeMeal = function(d, slot) {
   });
   // Le repas reste visible dans la semaine, marqué « pris » (remarque du 16/11) : on garde la vue d'ensemble
   plans[d][slot] = items.map(e => { const it = toMealItem(e); if (!it) return e; it.taken = iso; it.dPots = e.__d || 0; return it; });
+  hist[histKey(d, slot)] = { u: Date.now(), foods: plans[d][slot].map(it => { const s = findStock(it); return s ? dispName(s) : it.name; }) };
   save(); renderAll();
   toast("Repas pris : stocks et dates mis à jour ✔");
 };
 // Annuler « repas pris » : les pots retirés reviennent dans le stock
 window.undoMeal = function(d, slot) {
+  if ((plans[d][slot] || []).some(e => e.taken)) hist[histKey(d, slot)] = { u: Date.now(), foods: [] };
   (plans[d][slot] || []).forEach(e => { const it = toMealItem(e), s = findStock(it); if (s && e.dPots) s.qty = qtyOf(s) + e.dPots; });
   plans[d][slot] = (plans[d][slot] || []).map(e => { const it = toMealItem(e); delete it.taken; delete it.dPots; return it; });
   save(); renderAll(); toast("Repas remis à prendre, stock rétabli");
@@ -1573,7 +1592,14 @@ window.renderAll = function() {
   renderStocks();
   renderSummary();
   renderMenus();
+  renderHist();
 };
+function renderHist() {
+  const days = {};
+  Object.entries(hist).forEach(([k, v]) => { const [d, slot] = k.split("."); if (v.foods.length) (days[d] ??= {})[slot] = v.foods.join(", "); });
+  const fmt = d => new Date(d + "T12:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  $("histTable").innerHTML = `<thead><tr><th>Jour</th>${ALL_SLOTS.map(k => `<th>${SLOTS[k]}</th>`).join("")}</tr></thead><tbody>${Object.keys(days).sort().reverse().map(d => `<tr><td>${fmt(d)}</td>${ALL_SLOTS.map(k => `<td>${esc(days[d][k] || "")}</td>`).join("")}</tr>`).join("") || `<tr><td colspan="5">Aucun repas pris pour l'instant.</td></tr>`}</tbody>`;
+}
 
 let currentEditId = null;
 window.openStockEditor = function(id) {
