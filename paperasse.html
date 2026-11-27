@@ -138,13 +138,13 @@ main{position:relative;z-index:1}
 <div id="toast" class="toast"></div>
 
 <script type="module">
-import { initApp as kitInit, hero as kitHero, aiAsk as kitAI, AI_MODELS, AI_DEFAULT, logoutDevice as kitLogout, parseJsonLoose as kitParse, setGH as kitSetGH, setAI as kitSetAI } from './ui/kit.js';
-import { maskDocument, unmask } from './ui/docmask.js';
+import { initApp as kitInit, hero as kitHero, logoutDevice as kitLogout, setGH as kitSetGH } from './ui/kit.js';
+import { maskDocument } from './ui/docmask.js';
 kitInit('paperasse');
 
 /* =========================================================
    Paperasse — sous-app du hub « Gestion quotidien »
-   Documents, échéances, garanties, contrats. Scan + IA.
+   Documents, échéances, garanties, contrats. Scan lu sur le téléphone.
    Données : JSON_PAPERASSE.json dans le dépôt GitHub privé
    Fichiers : photos / PDF dans paperasse-media/
    ========================================================= */
@@ -183,21 +183,17 @@ const RENEW_MONTHS = { mensuel: 1, trimestriel: 3, semestriel: 6, annuel: 12 };
 const cat = k => CATS[k] || CATS.autre;
 const addMonths = (iso, m) => { const d = new Date(iso + 'T12:00:00'); const day = d.getDate(); d.setMonth(d.getMonth() + m); if (d.getDate() < day) d.setDate(0); return d.toISOString().slice(0, 10); };
 
-/* ---------- Réglages (GitHub + clé IA partagés via le hub) ---------- */
-const LS = { data: 'paperasse.data.v1', settings: 'paperasse.settings.v1', sync: 'paperasse.sync.v1', ui: 'paperasse.ui.v1', shared: 'hub.github', ai: 'hub.ai' };
-const DEFAULT_SETTINGS = { owner: '', repo: '', branch: '', path: 'JSON_PAPERASSE.json', mediaDir: 'paperasse-media', token: '', aiKey: '', aiModel: 'gemini-flash-latest', hubUrl: './index.html', remindDays: 7, maskNames: '' };
+/* ---------- Réglages (GitHub partagé via le hub) ---------- */
+const LS = { data: 'paperasse.data.v1', settings: 'paperasse.settings.v1', sync: 'paperasse.sync.v1', ui: 'paperasse.ui.v1', shared: 'hub.github' };
+const DEFAULT_SETTINGS = { owner: '', repo: '', branch: '', path: 'JSON_PAPERASSE.json', mediaDir: 'paperasse-media', token: '', hubUrl: './index.html', remindDays: 7, maskNames: '' };
 function loadSettings() {
   const s = { ...DEFAULT_SETTINGS, ...read(LS.settings, {}) };
   const sh = { ...(read('violette_github', {}) || {}), ...Object.fromEntries(Object.entries(read(LS.shared, {}) || {}).filter(([, v]) => v)) }; if (sh) for (const k of ['owner', 'repo', 'branch', 'token']) if (sh[k]) s[k] = sh[k]; // réglages communs : toujours la version partagée
   if (!s.branch) s.branch = 'main';
-  if (String(s.aiKey || '').startsWith('sk-ant')) s.aiKey = '';
-  if (!String(s.aiModel || '').startsWith('gemini')) s.aiModel = AI_DEFAULT;
-  const ai = read(LS.ai, null); if (ai) { if (ai.key) s.aiKey = ai.key; if (ai.model) s.aiModel = ai.model; }
-  if (!s.aiKey) { const c = read('collections.settings.v1', {}); if (c.aiKey) s.aiKey = c.aiKey; }
+  if ('aiKey' in s || 'aiModel' in s) { delete s.aiKey; delete s.aiModel; write(LS.settings, s); } // ancienne clé : effacée de l'appareil
   return s;
 }
 let S = loadSettings();
-addEventListener('k-hubai', () => { S = loadSettings(); }); // clé Gemini reçue d'un autre appareil
 let ui = { filter: 'all', q: '', sort: 'date', ...read(LS.ui, {}) };
 const saveUI = () => write(LS.ui, ui);
 
@@ -348,8 +344,6 @@ async function preparePage(file) {
   return { blob, type: 'image/jpeg', name: file.name, url: URL.createObjectURL(blob) };
 }
 
-/* ---------- IA ---------- */
-const parseJsonLoose = kitParse;
 /* ---------- Lecture du document sur le téléphone (rien ne part à ce stade) ---------- */
 const PDFJS = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/';
 const TESS = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
@@ -384,29 +378,11 @@ async function readPages(pages, step) {
   return out.join('\n\n---\n\n');
 }
 
-/* ---------- IA (Gemini) : ne reçoit que le texte masqué ---------- */
-async function aiExtract(pages, step) {
-  if (!S.aiKey) throw new Error("Ajoute ta clé Gemini dans les réglages (⚙︎)");
+/* ---------- Scan : texte lu et masqué sur le téléphone, rangé tel quel « à classer » ---------- */
+async function readMasked(pages, step) {
   const raw = await readPages(pages, step);
-  if (raw.replace(/\s/g, '').length < 20) throw new Error("Je n'arrive pas à lire ce document : remplis-le à la main");
   const names = [...new Set([...data.docs.map(d => d.person), (read('hub.prefs', {}) || {}).name, ...String(S.maskNames || '').split(',')].map(n => String(n || '').trim()).filter(Boolean).flatMap(n => String(n).split(/[\s,]+/)))];
-  const m = maskDocument(raw, { names });
-  step?.('Classement par l’IA (texte masqué)…');
-  const issuers = [...new Set(data.docs.map(d => d.issuer).filter(Boolean))].slice(0, 80).join(' | ') || 'aucun';
-  const prompt = `Tu es l'assistant administratif d'une famille française. Voici le texte d'un document, lu automatiquement (il peut contenir des erreurs de lecture).
-Par confidentialité, les dates sont remplacées par des repères [DATE1], [DATE2]…, les montants par [MONTANT1], [MONTANT2]…, et les autres nombres par ###. Tu ne connais donc pas leurs valeurs : désigne-les par leur repère.
-N'invente rien : "" si l'information n'apparaît pas.
-Émetteurs déjà connus (réutilise exactement la même orthographe si c'est le même) : ${issuers}.
-Catégories possibles : ${Object.entries(CATS).map(([k, c]) => `${k} (${c.label})`).join(', ')}.
-Réponds UNIQUEMENT avec un JSON valide :
-{"category":"une des clés ci-dessus","title":"titre court et explicite sans montant ni date chiffrée, ex. « Facture électricité EDF », « Garantie lave-linge Bosch »","issuer":"organisme, entreprise ou administration émettrice","docDate":"repère DATEn de la date du document","amount":"repère MONTANTn du montant principal TTC","dueDate":"repère DATEn de la date limite de paiement / de réponse / de démarche","renewal":"\\"\\"|mensuel|trimestriel|semestriel|annuel","endDate":"repère DATEn de fin de contrat / d'expiration","warrantyEnd":"repère DATEn de fin de garantie si elle est écrite","warrantyMonths":"durée de garantie en mois si elle est indiquée (ex. 24), sinon \\"\\"","action":"ce qu'il faut faire, en une phrase, avec les repères (ex. « Payer [MONTANT2] avant le [DATE5] »), ou \\"\\"","summary":"résumé en 1 ou 2 phrases, avec les repères si utile","tags":["mots-clés utiles"],"confidence":0.0}
-Texte :
-${m.masked.slice(0, 12000)}`;
-  const x = unmask(parseJsonLoose(await kitAI([prompt], { key: S.aiKey, model: S.aiModel, maxTokens: 2000 })), m);
-  if (!x.warrantyEnd && +x.warrantyMonths > 0 && /garantie|achat|facture/i.test(x.category + x.title)) x.warrantyEnd = addMonthsISO(x.docDate || todayISO(), +x.warrantyMonths);
-  x.reference = m.reference;
-  x.text = raw.replace(/\s+/g, ' ').slice(0, 600); // pour ta recherche : reste dans ton dépôt, jamais envoyé
-  return x;
+  return maskDocument(raw, { names }).masked.trim();
 }
 function addMonthsISO(d, n) { const [y, mo, da] = d.split('-').map(Number); const t = new Date(Date.UTC(y, mo - 1 + n, da)); return t.toISOString().slice(0, 10); }
 
@@ -486,7 +462,7 @@ function docRow(d) {
   const c = cat(d.category);
   const evs = events().filter(e => e.doc.id === d.id);
   const next = evs.find(e => e.days >= 0 || e.kind === 'due');
-  const pill = d.status === 'a_traiter' && !next ? `<span class="pill warn">À traiter</span>` : next ? `<span class="pill ${evClass(next)}">${evWhen(next)}</span>` : d.status === 'archive' ? `<span class="pill">Archivé</span>` : '';
+  const pill = d.tri ? `<span class="pill warn">📥 ${esc(d.tri)}</span>` : d.status === 'a_traiter' && !next ? `<span class="pill warn">À traiter</span>` : next ? `<span class="pill ${evClass(next)}">${evWhen(next)}</span>` : d.status === 'archive' ? `<span class="pill">Archivé</span>` : '';
   return `<div class="doc" data-open="${esc(d.id)}"><div class="ic" style="background:${c.color}">${c.icon}</div>
     <div class="meta"><b>${esc(d.title || 'Sans titre')}</b><small>${esc([d.issuer, frDate(d.docDate)].filter(Boolean).join(' · '))}</small>${pill ? `<small>${pill}${d.files?.length ? ` · 📎 ${d.files.length}` : ''}</small>` : d.files?.length ? `<small>📎 ${d.files.length}</small>` : ''}</div>
     ${d.amount ? `<div class="amt">${money(d.amount)}</div>` : ''}</div>`;
@@ -533,14 +509,16 @@ function renderHome() {
   const late = evs.filter(e => e.days < 0 && e.kind === 'due').length;
   const soon = evs.filter(e => e.days >= 0 && e.days <= 30).length;
   const warr = data.docs.filter(d => isISO(d.warrantyEnd) && daysTo(d.warrantyEnd) >= 0).length;
-  const inbox = data.docs.filter(d => d.status === 'a_traiter' && !isISO(d.dueDate));
+  const inbox = data.docs.filter(d => d.status === 'a_traiter' && !isISO(d.dueDate) && !d.tri);
+  const toSort = data.docs.filter(d => d.tri);
   const counts = Object.fromEntries(Object.keys(CATS).map(k => [k, data.docs.filter(d => d.category === k && d.status !== 'archive').length]));
   view.innerHTML = `<div id="home">
     <label class="search">🔎<input id="homeQ" placeholder="Rechercher : EDF, n° de contrat, lave-linge…" enterkeyhint="search"></label>
 
-    ${!data.docs.length ? `<div class="aibox" style="margin-top:16px"><b>✨ Commence par un scan</b><p>Prends une facture, un courrier ou un contrat en photo (ou importe un PDF) : l'IA le classe, repère le montant, l'échéance et la fin de garantie.</p><div style="margin-top:10px"><button class="btn" style="background:#fff;color:var(--acc)" id="firstScan">📷 Scanner un document</button></div></div>` : ''}
+    ${!data.docs.length ? `<div class="aibox" style="margin-top:16px"><b>✨ Commence par un scan</b><p>Prends une facture, un courrier ou un contrat en photo (ou importe un PDF) : le téléphone le lit et le range « à classer », puis le tri 🛠️ repère le montant, l'échéance et la fin de garantie.</p><div style="margin-top:10px"><button class="btn" style="background:#fff;color:var(--acc)" id="firstScan">📷 Scanner un document</button></div></div>` : ''}
     <h2 class="sec">📅 À venir <a href="#/agenda">Tout voir</a></h2>
     ${evs.filter(e => e.days <= 60).slice(0, 6).map(evHTML).join('') || '<p class="hint">Aucune échéance dans les 60 prochains jours 🎉</p>'}
+    ${toSort.length ? `<h2 class="sec">🛠️ ${toSort.length} à classer</h2><p class="hint" style="margin-top:-4px">Le tri 🛠️ de l'accueil les remplit.</p>${toSort.map(docRow).join('')}` : ''}
     ${inbox.length ? `<h2 class="sec">📥 À traiter <a href="#/todo">Tout voir</a></h2>${inbox.slice(0, 4).map(docRow).join('')}` : ''}
     <h2 class="sec">Classeurs</h2>
     <div class="tiles">${Object.entries(CATS).map(([k, c]) => `<button class="tile" data-go="#/c/${k}" style="background:linear-gradient(150deg,${c.color},#3b0764)"><span class="ic">${c.icon}</span><span><b>${c.label}</b><small>${counts[k]} doc${counts[k] > 1 ? 's' : ''}</small></span></button>`).join('')}</div></div>`;
@@ -623,6 +601,7 @@ function openDetail(id) {
     ['Échéance', d.dueDate ? frDate(d.dueDate) + (d.renewal ? ` (${RENEW[d.renewal].toLowerCase()})` : '') : ''], ['Fin / expiration', frDate(d.endDate)], ['Fin de garantie', frDate(d.warrantyEnd)], ['Statut', STATUS[d.status]]].filter(r => r[1]);
   const body = openSheet(d.title || 'Document', `
     ${d.files?.length ? `<div class="pages">${d.files.map((f, i) => `<button class="page" data-page="${i}" data-view="${i}">${f.type === 'application/pdf' ? '<span class="pdf">📄</span>' : '<span class="pdf">🖼️</span>'}</button>`).join('')}</div>` : ''}
+    ${d.tri ? `<div class="todo">🛠️ ${esc(d.tri)} : le tri de l'accueil remplira la fiche.</div>` : ''}
     ${d.action && d.status === 'a_traiter' ? `<div class="todo">👉 ${esc(d.action)}</div>` : ''}
     ${evs.map(evHTML).join('')}
     ${d.summary ? `<p>${esc(d.summary)}</p>` : ''}
@@ -632,7 +611,7 @@ function openDetail(id) {
     ${budgetHTML(d)}
     <div class="btns" style="margin-top:14px"><button class="btn" id="edit">✏️ Modifier</button>${d.status !== 'fait' ? `<button class="btn ghost" id="done">✅ Traité</button>` : `<button class="btn ghost" id="reopen">↩︎ À traiter</button>`}</div>
     <div class="btns" style="margin-top:8px">${d.status !== 'archive' ? `<button class="btn ghost sm" id="arch">🗄 Archiver</button>` : ''}<button class="btn danger sm" id="del">🗑 Supprimer</button></div>
-    ${d.text ? `<details class="more"><summary>Texte extrait</summary><p class="hint" style="white-space:pre-wrap">${esc(d.text)}</p></details>` : ''}
+    ${d.text ? `<details class="more"><summary>Texte lu (masqué)</summary><p class="hint" style="white-space:pre-wrap">${esc(d.text)}</p></details>` : ''}
     ${(d.history || []).length ? `<details class="more"><summary>Historique</summary>${d.history.slice().reverse().map(h => `<div class="hint">${new Date(h.at).toLocaleDateString('fr-FR')} — ${esc(h.txt)}</div>`).join('')}</details>` : ''}`);
   hydratePages(body, d.files || []);
   body.querySelectorAll('[data-view]').forEach(b => b.onclick = () => openFile(d.files[+b.dataset.view]));
@@ -687,6 +666,7 @@ function openForm(src, { pages = [], isNew = !getDoc(src.id) } = {}) {
       <div class="field"><label for="fSummary">Résumé</label><textarea id="fSummary">${esc(d.summary)}</textarea></div>
     </details>
     <div class="field"><label for="fNotes">Notes</label><textarea id="fNotes">${esc(d.notes)}</textarea></div>
+    ${d.tri ? `<label class="field" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="fTri" checked style="width:auto"> Encore ${esc(d.tri)} (tri 🛠️)</label>` : ''}
     <div class="btns"><button class="btn" id="fSave">Enregistrer</button>${isNew ? '' : '<button class="btn ghost" id="fCancel">Annuler</button>'}</div>`,
     { onClose: () => setTimeout(() => newPages.forEach(p => URL.revokeObjectURL(p.url)), 4000) });
   const drawPages = () => {
@@ -710,10 +690,11 @@ function openForm(src, { pages = [], isNew = !getDoc(src.id) } = {}) {
     const btn = $('#fSave'); btn.disabled = true;
     Object.assign(d, { title: v('fTitle'), category: v('fCat'), status: v('fStatus'), issuer: v('fIssuer'), docDate: v('fDate'), amount: v('fAmount').replace(',', '.').replace(/[^\d.\-]/g, ''), reference: v('fRef'),
       dueDate: v('fDue'), renewal: v('fRenew'), endDate: v('fEnd'), warrantyEnd: v('fWarr'), action: v('fAction'), person: v('fPerson'), tags: v('fTags').split(',').map(s => s.trim()).filter(Boolean), summary: v('fSummary'), notes: v('fNotes') });
+    if ($('#fTri') && !$('#fTri').checked) delete d.tri;
     d.files = (d.files || []).filter(x => !removed.includes(x.path));
     for (const p of removed) removeMedia(p);
     for (const p of newPages) d.files.push(await storeFile(d.id, p.blob, p.type, p.name));
-    if (isNew) addHistory(d, d.source === 'ia' ? 'Ajouté par scan IA' : 'Ajouté');
+    if (isNew) addHistory(d, 'Ajouté');
     upsertDoc(d); render(); openDetail(d.id); toast(isNew ? 'Document ajouté ✓' : 'Enregistré ✓');
   };
 }
@@ -721,7 +702,7 @@ function openForm(src, { pages = [], isNew = !getDoc(src.id) } = {}) {
 /* ---------- Ajout : menu + capture multi-pages ---------- */
 function openAddMenu(catKey) {
   openSheet('Ajouter un document', `
-    <div class="aibox"><b>✨ Scan intelligent</b><p>Photographie toutes les pages (ou importe un PDF) : l'IA remplit le titre, l'émetteur, le montant, les échéances, la garantie et l'action à faire.</p></div>
+    <div class="aibox"><b>📷 Scan</b><p>Photographie toutes les pages (ou importe un PDF) : le téléphone lit le texte, masque montants, dates, numéros et noms, puis range la fiche « à classer ». Le tri 🛠️ de l'accueil la remplit ensuite.</p></div>
     <div class="btns" style="flex-direction:column">
       <button class="btn" id="aCam">📷 Photographier un document</button>
       <button class="btn ghost" id="aGal">🖼️ Photos ou PDF existants</button>
@@ -741,10 +722,10 @@ async function openCapture({ camera, catKey }) {
     $('#cn').textContent = `${pages.length} page${pages.length > 1 ? 's' : ''}`;
   };
   const body = openSheet('Document scanné', `
-    <p class="hint" style="margin-top:0">Ajoute les autres pages (recto/verso, annexes) avant l'analyse. <b id="cn"></b></p>
+    <p class="hint" style="margin-top:0">Ajoute les autres pages (recto/verso, annexes) avant de ranger. <b id="cn"></b></p>
     <div class="pages" id="cp"></div>
     <div class="btns" style="flex-direction:column;margin-top:8px">
-      <button class="btn" id="cAi">✨ Analyser avec l'IA</button>
+      <button class="btn" id="cAi">📥 Lire et ranger « à classer »</button>
       <button class="btn ghost" id="cMore">📷 Ajouter une page</button>
       <button class="btn ghost" id="cMan">✍️ Remplir moi-même</button>
     </div>`);
@@ -755,24 +736,14 @@ async function openCapture({ camera, catKey }) {
   $('#cMan').onclick = () => openForm({ ...blankDoc(), category: catKey || 'autre' }, { pages, isNew: true });
   $('#cAi').onclick = async () => {
     if (!pages.length) return toast('Ajoute au moins une page');
-    if (!S.aiKey) { toast("Ajoute d'abord ta clé Gemini"); return openSettings(); }
     body.innerHTML = `<div class="pages">${pages.map(p => `<div class="page">${p.type === 'application/pdf' ? '<span class="pdf">📄</span>' : `<img src="${p.url}" alt="">`}</div>`).join('')}</div><div class="spinner"></div><p class="hint" style="text-align:center">Lecture du document…</p>`;
-    try {
-      const x = await aiExtract(pages, t => { const h = body.querySelector('p.hint'); if (h) h.textContent = t; });
-      const d = { ...blankDoc(), source: 'ia', status: 'a_traiter' };
-      d.category = CATS[x.category] ? x.category : (catKey || 'autre');
-      for (const k of ['title', 'issuer', 'reference', 'person', 'action', 'summary', 'text']) if (x[k]) d[k] = String(x[k]).trim();
-      for (const k of ['docDate', 'dueDate', 'endDate', 'warrantyEnd']) d[k] = isISO(x[k]) ? x[k] : (k === 'docDate' ? todayISO() : '');
-      d.amount = x.amount ? String(x.amount).replace(',', '.').replace(/[^\d.\-]/g, '') : '';
-      d.renewal = RENEW[x.renewal] !== undefined ? x.renewal : '';
-      d.tags = Array.isArray(x.tags) ? x.tags.slice(0, 8) : [];
-      if (!d.dueDate && !d.action) d.status = 'fait';
-      openForm(d, { pages, isNew: true });
-      toast(`Vérifie les infos puis enregistre${typeof x.confidence === 'number' ? ` (confiance ${Math.round(x.confidence * 100)} %)` : ''}`);
-    } catch (e) {
-      console.error(e); toast(e.message);
-      openForm({ ...blankDoc(), category: catKey || 'autre' }, { pages, isNew: true });
-    }
+    const d = { ...blankDoc(), category: catKey || 'autre', title: 'Document à classer', source: 'scan', tri: 'à classer' };
+    try { d.text = await readMasked(pages, t => { const h = body.querySelector('p.hint'); if (h) h.textContent = t; }); }
+    catch (e) { console.error(e); toast(e.message + ' : la fiche est rangée avec les photos seules'); }
+    for (const p of pages) d.files.push(await storeFile(d.id, p.blob, p.type, p.name));
+    addHistory(d, 'Scanné, à classer');
+    upsertDoc(d); render(); openDetail(d.id); toast('Rangé « à classer » ✓');
+    setTimeout(() => pages.forEach(p => URL.revokeObjectURL(p.url)), 4000);
   };
 }
 
@@ -792,21 +763,18 @@ function openSettings() {
     <div class="cols">${f('sBranch', 'Branche', S.branch, 'autocapitalize="off"')}${f('sPath', 'Fichier JSON', S.path, 'autocapitalize="off"')}</div>
     ${f('sMedia', 'Dossier des fichiers', S.mediaDir, 'autocapitalize="off"')}
     ${f('sToken', 'Jeton GitHub (Contents : read & write)', S.token, 'type="password" autocomplete="off"')}
-    <h3 style="margin:14px 0 8px">✨ IA</h3>
-    ${f('sAiKey', 'Clé API Gemini (partagée par toutes les applis)', S.aiKey, 'type="password" autocomplete="off" placeholder="AIza…"')}
-    <div class="field"><label for="sAiModel">Modèle</label><select id="sAiModel">${AI_MODELS.map(([v, l]) => `<option value="${v}" ${v === S.aiModel ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
     <h3 style="margin:14px 0 8px">⏰ Rappels</h3>
     ${f('sRemind', 'Prévenir combien de jours avant ?', S.remindDays, 'type="number" min="1" max="60"')}
-    ${f('sMaskNames', 'Noms à masquer avant l’envoi à l’IA', S.maskNames || '', 'placeholder="Ex. prénoms et nom de famille" autocapitalize="words"')}
-    <p class="hint">Séparés par des virgules. Ils restent sur ce téléphone et sont remplacés par [PERSONNE] dans le texte envoyé à Gemini.</p>
+    ${f('sMaskNames', 'Noms à masquer dans le texte scanné', S.maskNames || '', 'placeholder="Ex. prénoms et nom de famille" autocapitalize="words"')}
+    <p class="hint">Séparés par des virgules. Ils sont remplacés par [PERSONNE] dans le texte enregistré.</p>
     ${f('sHub', "Adresse de l'accueil", S.hubUrl)}
     <div class="card" style="margin-bottom:12px"><b>💶 Passerelle Budget (bêta ${PASSERELLE_VERSION})</b><p class="hint" style="margin:6px 0 8px">Les montants (échéances prévues, paiements faits, achats) sont proposés à l'appli Budget. Elle confirme ce qu'elle a importé dans <code>JSON_PASSERELLE.json</code>.</p><a class="btn ghost sm" href="./passerelle-test.html">Ouvrir le banc d'essai</a></div>
     <div class="btns" style="margin-bottom:10px"><button class="btn ghost sm" id="sTest">Tester GitHub</button><button class="btn ghost sm" id="sJson">⬇︎ Sauvegarde JSON</button><button class="btn ghost sm" id="sCsv">⬇︎ CSV</button></div>
     <button class="btn block" id="sSave">Enregistrer</button>
     <button class="btn ghost block" id="sLogout" style="margin-top:12px;color:#ff4f5e">Se déconnecter de cet appareil</button>
-    <p class="hint">Version ${APP_VERSION} · ${data.docs.length} documents. Le jeton et la clé restent sur cet appareil. Garde le dépôt <b>privé</b> : il contient tes documents.</p>`);
-  const collect = () => ({ ...S, owner: $('#sOwner').value.trim(), repo: $('#sRepo').value.trim(), branch: $('#sBranch').value.trim() || 'main', path: $('#sPath').value.trim() || DEFAULT_SETTINGS.path, mediaDir: $('#sMedia').value.trim() || DEFAULT_SETTINGS.mediaDir, token: $('#sToken').value.trim(), aiKey: $('#sAiKey').value.trim(), aiModel: $('#sAiModel').value, remindDays: Math.min(60, Math.max(1, parseInt($('#sRemind').value) || 7)), hubUrl: $('#sHub').value.trim() || './index.html', maskNames: $('#sMaskNames').value.trim() });
-  const apply = () => { S = collect(); write(LS.settings, S); data.prefs = { maskNames: S.maskNames || '', remindDays: S.remindDays }; data.prefsAt = now(); touch(); kitSetGH({ owner: S.owner, repo: S.repo, branch: S.branch, token: S.token }); kitSetAI({ key: S.aiKey, model: S.aiModel }); $('#hubLink').href = S.hubUrl; };
+    <p class="hint">Version ${APP_VERSION} · ${data.docs.length} documents. Le jeton reste sur cet appareil. Garde le dépôt <b>privé</b> : il contient tes documents.</p>`);
+  const collect = () => ({ ...S, owner: $('#sOwner').value.trim(), repo: $('#sRepo').value.trim(), branch: $('#sBranch').value.trim() || 'main', path: $('#sPath').value.trim() || DEFAULT_SETTINGS.path, mediaDir: $('#sMedia').value.trim() || DEFAULT_SETTINGS.mediaDir, token: $('#sToken').value.trim(), remindDays: Math.min(60, Math.max(1, parseInt($('#sRemind').value) || 7)), hubUrl: $('#sHub').value.trim() || './index.html', maskNames: $('#sMaskNames').value.trim() });
+  const apply = () => { S = collect(); write(LS.settings, S); data.prefs = { maskNames: S.maskNames || '', remindDays: S.remindDays }; data.prefsAt = now(); touch(); kitSetGH({ owner: S.owner, repo: S.repo, branch: S.branch, token: S.token }); $('#hubLink').href = S.hubUrl; };
   $('#sTest').onclick = async () => { apply(); if (!gh.ok()) return toast('Renseigne propriétaire, dépôt et jeton'); try { const r = await fetch(`https://api.github.com/repos/${S.owner}/${S.repo}`, { headers: gh.h() }); if (!r.ok) throw new Error(await errMsg(r)); const j = await r.json(); toast(`✓ ${j.full_name}${j.private ? ' (privé)' : ' — ⚠︎ dépôt PUBLIC'}`); } catch (e) { toast('✗ ' + e.message); } };
   $('#sJson').onclick = () => download(`paperasse-${todayISO()}.json`, JSON.stringify(data, null, 1), 'application/json');
   $('#sCsv').onclick = () => download(`paperasse-${todayISO()}.csv`, toCSV(data.docs), 'text/csv');

@@ -191,7 +191,7 @@ main{position:relative;z-index:1}
 <div id="toast" class="toast"></div>
 
 <script type="module">
-import { initApp as kitInit, hero as kitHero, aiAsk as kitAI, AI_MODELS, AI_DEFAULT, logoutDevice as kitLogout, parseJsonLoose as kitParse, rocket as kitRocket, setGH as kitSetGH, setAI as kitSetAI } from './ui/kit.js';
+import { initApp as kitInit, hero as kitHero, logoutDevice as kitLogout, rocket as kitRocket, setGH as kitSetGH } from './ui/kit.js';
 kitInit('collections');
 
 /* =========================================================
@@ -230,19 +230,16 @@ const CONDITION = { '': '—', neuf: 'Neuf', tres_bon: 'Très bon', bon: 'Bon', 
 
 /* ---------- Réglages ---------- */
 const LS = { data: 'collections.data.v1', settings: 'collections.settings.v1', sync: 'collections.sync.v1', ui: 'collections.ui.v1', shared: 'hub.github' };
-const DEFAULT_SETTINGS = { owner: '', repo: '', branch: '', path: 'JSON_COLLECTIONS.json', mediaDir: 'collections-media', token: '', aiKey: '', aiModel: 'gemini-flash-latest', hubUrl: './index.html' };
+const DEFAULT_SETTINGS = { owner: '', repo: '', branch: '', path: 'JSON_COLLECTIONS.json', mediaDir: 'collections-media', token: '', hubUrl: './index.html' };
 function loadSettings() {
   const s = { ...DEFAULT_SETTINGS, ...read(LS.settings, {}) };
   const shared = { ...(read('violette_github', {}) || {}), ...Object.fromEntries(Object.entries(read(LS.shared, {}) || {}).filter(([, v]) => v)) };
   if (shared) for (const k of ['owner', 'repo', 'branch', 'token']) if (shared[k]) s[k] = shared[k]; // réglages communs : toujours la version partagée
   if (!s.branch) s.branch = 'main';
-  if (String(s.aiKey || '').startsWith('sk-ant')) s.aiKey = '';
-  if (!String(s.aiModel || '').startsWith('gemini')) s.aiModel = AI_DEFAULT;
-  const ai = read('hub.ai', null); if (ai?.key) s.aiKey = ai.key; if (ai?.model) s.aiModel = ai.model; // clé IA partagée entre les apps
+  if ('aiKey' in s || 'aiModel' in s) { delete s.aiKey; delete s.aiModel; write(LS.settings, s); } // ancienne clé : effacée de l'appareil
   return s;
 }
 let S = loadSettings();
-addEventListener('k-hubai', () => { S = loadSettings(); }); // clé Gemini reçue d'un autre appareil
 let ui = { view: 'grid', sort: 'recent', filter: 'all', q: '', lastCollection: '', lastStatus: 'possede', ...read(LS.ui, {}) };
 const saveUI = () => write(LS.ui, ui);
 
@@ -450,11 +447,6 @@ async function lookupISBN(raw) {
   return res;
 }
 
-/* ---------- IA (Gemini, appel direct depuis le navigateur) ---------- */
-const parseJsonLoose = kitParse;
-async function askAI(imagesB64, prompt, maxTokens = 4000) {
-  return parseJsonLoose(await kitAI([...imagesB64.map(d => ({ mime: 'image/jpeg', b64: d })), prompt], { key: S.aiKey, model: S.aiModel, maxTokens }));
-}
 /* ---------- Belles images en ligne (sans clé) ---------- */
 // Livres, BD, mangas : Open Library (grande taille) puis Google Books en haute définition.
 // Films, jeux vidéo, jeux de société, musique, figurines… : image principale de l'article Wikipédia (fr puis en),
@@ -483,7 +475,7 @@ const sameVolume = (ours, theirs) => { const a = seqOf(ours); return !a.length |
 const volScore = (ours, theirs) => sameVolume(ours, theirs) ? 2 : -1;
 function isbn13to10(i) { if (!/^978\d{10}$/.test(i)) return ''; const b = i.slice(3, 12); let s = 0; for (let k = 0; k < 9; k++) s += (10 - k) * +b[k]; const c = (11 - s % 11) % 11; return b + (c === 10 ? 'X' : String(c)); }
 
-// L'ISBN donné par l'IA est parfois faux (celui d'un autre livre du même éditeur) : on le vérifie avant de s'en servir.
+// Un ISBN saisi ou trouvé est parfois faux (celui d'un autre livre du même éditeur) : on le vérifie avant de s'en servir.
 // Renvoie true (le titre correspond), false (c'est un autre livre) ou null (inconnu des bases).
 const isbnCache = {};
 async function isbnTitle(isbn) {
@@ -607,21 +599,6 @@ async function coverForItem(it) {
   return { url, isbnChanged: changed };
 }
 
-function aiPrompt(multi) {
-  const colls = data.collections.map(c => `${c.name} (${c.type})`).join(', ') || 'aucune pour le moment';
-  const series = [...new Set(data.items.map(i => i.series).filter(Boolean))].slice(0, 120).join(' | ') || 'aucune';
-  return `Tu es l'assistant de catalogage d'une application de suivi de collections (livres, BD, mangas, vinyles/CD, films, jeux vidéo, jeux de société, LEGO, figurines…).
-${multi ? `La photo peut contenir PLUSIEURS objets (étagère, pile, tranches…) : liste CHAQUE objet séparément, de gauche à droite puis de haut en bas, même ceux que tu n'identifies pas (titre "" et confidence basse).
-Sur une tranche, le texte est souvent vertical (de haut en bas ou de bas en haut) : tourne-le mentalement. Repère aussi le logo et le nom de l'éditeur ou de la collection (Folio, Pocket, Livre de Poche, Glénat, Kana, Dargaud…), le numéro de tome, le logo de console (PS5, PS4, Switch, Xbox) ou de l'éditeur de jeu, les couleurs et le graphisme typiques d'une série.` : "Identifie l'objet principal de la photo (un seul objet)."}
-Lis attentivement tout le texte visible (couverture, tranche, dos, code-barres, numéro de tome). Utilise tes connaissances pour compléter auteur, éditeur, série et année quand tu reconnais l'œuvre avec certitude. N'invente rien : laisse "" ce que tu ne peux ni lire ni déduire de façon fiable.
-Collections de l'utilisateur : ${colls}.
-Séries déjà présentes (réutilise exactement la même orthographe si c'est la même série) : ${series}.
-Réponds UNIQUEMENT avec un JSON valide, sans aucun texte autour, au format :
-{"items":[{"type":"livre|bd|manga|musique|film|jeu_video|jeu_societe|lego|figurine|autre","collection":"nom exact d'une collection existante adaptée, sinon \\"\\"","title":"titre exact de l'objet","creators":"auteur(s)/artiste(s)/studio, séparés par des virgules","series":"série, saga ou cycle si applicable","volume":"numéro de tome/volume (chiffres) si applicable","publisher":"éditeur / label / studio / marque","year":"année","isbn":"ISBN-13 ou EAN si lisible (chiffres uniquement)","format":"ex. Broché, Relié, Poche, Intégrale, Vinyle 33T, CD, Blu-ray, DVD, PS5, Switch, Boîte…","genre":"genre principal","language":"langue de l'édition","tags":["mots-clés utiles"],"description":"résumé en 1 ou 2 phrases si tu connais l'œuvre, sinon \\"\\"","seen":"texte lu tel quel sur l'objet (tranche, couverture), même partiel","originalTitle":"titre original ou international en anglais si différent (ex. Pokémon Écarlate → Pokémon Scarlet), sinon \\"\\"","confidence":0.0,"bbox":[x0,y0,x1,y1]}]}
-"confidence" est entre 0 et 1. "bbox" = rectangle approximatif de l'objet dans l'image en fractions (0 à 1) de la largeur et de la hauteur, origine en haut à gauche.`;
-}
-const BARCODE_PROMPT = `Lis le ou les codes-barres (EAN-13, ISBN, UPC) visibles sur la photo, chiffre par chiffre (utilise aussi les chiffres imprimés sous les barres). Réponds UNIQUEMENT en JSON : {"codes":["9782..."]}. Si aucun code lisible : {"codes":[]}.`;
-
 /* ---------- UI : utilitaires ---------- */
 let toastT;
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2600); }
@@ -655,7 +632,8 @@ function placeholder(it) {
 function coverHTML(it, { badges = true } = {}) {
   let b = '';
   if (badges) {
-    if (it.loan) b += `<span class="badge loan">Prêté</span>`;
+    if (it.tri) b += `<span class="badge pre">🛠️ ${esc(it.tri)}</span>`;
+    else if (it.loan) b += `<span class="badge loan">Prêté</span>`;
     else if (it.status === 'souhait') b += `<span class="badge wish">Souhait</span>`;
     else if (it.status === 'precommande') b += `<span class="badge pre">Précommande</span>`;
     if (it.volume) b += `<span class="vol">#${esc(it.volume)}</span>`;
@@ -750,6 +728,7 @@ function renderHome() {
   const wish = items.filter(i => i.status !== 'possede').length;
   const lent = items.filter(i => i.loan).length;
   const recent = [...items].sort((a, b) => b.createdAt - a.createdAt).slice(0, 12);
+  const toId = items.filter(i => i.tri);
   const tiles = data.collections.map(c => {
     const n = items.filter(i => i.collectionId === c.id).length;
     return `<button class="tile" data-coll="${esc(c.id)}" style="background:linear-gradient(150deg,${c.color || collType(c).color},color-mix(in srgb,${c.color || collType(c).color} 55%,#26233a))"><span class="ic">${c.icon || collType(c).icon}</span><span><b>${esc(c.name)}</b><small>${n} objet${n > 1 ? 's' : ''}</small></span></button>`;
@@ -757,14 +736,16 @@ function renderHome() {
   view.innerHTML = `
     <label class="search">🔎<input id="homeQ" placeholder="Rechercher dans toutes les collections…" enterkeyhint="search"></label>
     <h2 class="sec">Mes collections</h2>
-    ${data.collections.length ? '' : `<div class="card" style="margin-bottom:12px"><b>Bienvenue 👋</b><p class="hint" style="margin:6px 0 10px">Crée ta première collection en un tap, ou ajoute directement un objet en photo : l'IA crée la collection adaptée.</p><div class="btns">${['livre', 'bd', 'manga', 'musique', 'film', 'jeu_video'].map(t => `<button class="btn ghost sm" data-preset="${t}">${TYPES[t].icon} ${TYPES[t].label}</button>`).join('')}</div></div>`}
+    ${data.collections.length ? '' : `<div class="card" style="margin-bottom:12px"><b>Bienvenue 👋</b><p class="hint" style="margin:6px 0 10px">Crée ta première collection en un tap, puis ajoute tes objets en photo : ils arrivent « à identifier » et le tri 🛠️ de l'accueil remplit les fiches.</p><div class="btns">${['livre', 'bd', 'manga', 'musique', 'film', 'jeu_video'].map(t => `<button class="btn ghost sm" data-preset="${t}">${TYPES[t].icon} ${TYPES[t].label}</button>`).join('')}</div></div>`}
     <div class="tiles">${tiles}<button class="tile add" id="addColl"><span class="ic">＋</span><b>Nouvelle collection</b></button></div>
+    ${toId.length ? `<h2 class="sec">🛠️ ${toId.length} à identifier</h2><p class="hint" style="margin-top:-4px">Le tri 🛠️ de l'accueil remplit ces fiches.</p><div class="row-scroll" id="toId">${toId.map(itemCard).join('')}</div>` : ''}
     ${recent.length ? `<h2 class="sec">Ajouts récents</h2><div class="row-scroll" id="recent">${recent.map(itemCard).join('')}</div>` : ''}`;
   $('#homeQ').addEventListener('keydown', e => { if (e.key === 'Enter') { ui.q = e.target.value; ui.filter = 'all'; saveUI(); location.hash = '#/all'; } });
   view.querySelectorAll('[data-coll]').forEach(b => b.onclick = () => location.hash = '#/c/' + b.dataset.coll);
   view.querySelectorAll('[data-preset]').forEach(b => b.onclick = () => { newCollection(b.dataset.preset); render(); });
   $('#addColl').onclick = () => openCollectionForm();
   if ($('#recent')) bindOpen($('#recent'));
+  if ($('#toId')) bindOpen($('#toId'));
   hydrateCovers(view);
 }
 
@@ -790,7 +771,7 @@ function drawSelBar(list, redraw) {
   if (!bar) { bar = document.createElement('div'); bar.id = 'selbar'; bar.className = 'selbar'; document.body.appendChild(bar); }
   const n = sel.size;
   bar.innerHTML = `<div class="row"><b>${n} sélectionné${n > 1 ? 's' : ''}</b><button class="btn ghost sm" data-s="all">${n === list.length ? 'Aucun' : 'Tout'}</button><button class="btn ghost sm" data-s="close">✕</button></div>
-    <div class="row"><button class="btn sm" data-s="edit" ${n ? '' : 'disabled'}>✎ Modifier</button><button class="btn ghost sm" data-s="images" ${n ? '' : 'disabled'}>🌐 Images auto</button><button class="btn ghost sm" data-s="ai" ${n ? '' : 'disabled'}>✨ Compléter (IA)</button><button class="btn ghost sm" data-s="del" style="color:#ff4f5e" ${n ? '' : 'disabled'}>🗑</button></div>`;
+    <div class="row"><button class="btn sm" data-s="edit" ${n ? '' : 'disabled'}>✎ Modifier</button><button class="btn ghost sm" data-s="images" ${n ? '' : 'disabled'}>🌐 Images auto</button><button class="btn ghost sm" data-s="tri" ${n ? '' : 'disabled'}>🛠️ À identifier</button><button class="btn ghost sm" data-s="del" style="color:#ff4f5e" ${n ? '' : 'disabled'}>🗑</button></div>`;
   bar.onclick = async e => {
     const a = e.target.closest('[data-s]')?.dataset.s; if (!a) return;
     const items = data.items.filter(i => sel.has(i.id));
@@ -798,7 +779,7 @@ function drawSelBar(list, redraw) {
     else if (a === 'close') { selMode = false; sel.clear(); bar.remove(); redraw(); }
     else if (a === 'edit') batchEdit(items, redraw);
     else if (a === 'images') batchImages(items, redraw);
-    else if (a === 'ai') batchComplete(items, redraw);
+    else if (a === 'tri') markToIdentify(items, redraw);
     else if (a === 'del') { if (!confirm(`Supprimer ${items.length} objet(s) ? C'est définitif.`)) return; items.forEach(i => deleteItem(i.id)); sel.clear(); toast(`${items.length} objet(s) supprimé(s)`); redraw(); }
   };
 }
@@ -843,30 +824,10 @@ async function batchImages(items, redraw) {
   if (changed.length) upsertItems(changed);
   closeSheet(); toast(`${found} image(s) trouvée(s) sur ${items.length}`); redraw();
 }
-// Compléter en lot avec Gemini : une seule demande pour 25 objets (économe en quota), puis recherche des images
-async function batchComplete(items, redraw) {
-  if (!S.aiKey) { toast("Ajoute d'abord ta clé Gemini"); return openSettings(); }
-  const body = openSheet('Compléter avec l’IA', `<div class="spinner"></div><p class="hint" style="text-align:center" id="bMsg">…</p>`);
-  const FIELDS2 = ['creators', 'originalTitle', 'series', 'volume', 'publisher', 'year', 'isbn', 'format', 'genre', 'language', 'description'];
-  let filled = 0;
-  try {
-    for (let k = 0; k < items.length; k += 25) {
-      const part = items.slice(k, k + 25);
-      $('#bMsg').textContent = `Gemini complète ${Math.min(k + 25, items.length)}/${items.length}…`;
-      const known = part.map((it, i) => `${i + 1}. ${JSON.stringify(Object.fromEntries(['title', ...FIELDS2].filter(f => it[f]).map(f => [f, String(it[f]).slice(0, 120)])))} (type : ${data.collections.find(c => c.id === it.collectionId)?.type || 'autre'})`).join('\n');
-      const prompt = `Voici des objets d'une collection personnelle, numérotés. Complète les champs MANQUANTS de chacun avec des informations exactes (édition française si c'est elle) : ${FIELDS2.join(', ')}. N'invente rien : laisse "" si tu n'es pas sûr, en particulier pour l'ISBN.
-${known}
-Réponds UNIQUEMENT en JSON : {"items":[{"i":1,"creators":"","originalTitle":"","series":"","volume":"","publisher":"","year":"","isbn":"","format":"","genre":"","language":"","description":""}]}`;
-      const r = parseJsonLoose(await kitAI([prompt], { key: S.aiKey, model: S.aiModel, maxTokens: 12000, json: false, search: true }));
-      for (const x of r.items || []) {
-        const it = part[(+x.i || 0) - 1]; if (!it) continue;
-        for (const f of FIELDS2) if (!it[f] && x[f] && String(x[f]).trim()) { it[f] = String(x[f]).trim(); filled++; }
-      }
-      upsertItems(part);
-    }
-  } catch (e) { toast(e.message); }
-  closeSheet(); toast(`${filled} information(s) ajoutée(s)`);
-  if (items.some(i => !i.cover)) batchImages(items.filter(i => !i.cover), redraw); else redraw();
+// Marque les objets choisis « à identifier » : le tri 🛠️ de l'accueil complétera leurs fiches
+function markToIdentify(items, redraw) {
+  for (const it of items) it.tri = 'à identifier';
+  upsertItems(items); toast(`${items.length} objet(s) à identifier 🛠️`); redraw();
 }
 
 function renderList(collId) {
@@ -1037,7 +998,6 @@ function openItemForm(src, isNew = !getItem(src.id), startBlob = null) {
         <button class="btn ghost sm" id="cGal">🖼️ Galerie</button>
         <button class="btn ghost sm" id="cWeb">🌐 Choisir une image en ligne</button>
         <button class="btn ghost sm" id="cUrl">🔗 Image par URL</button>
-        <button class="btn ghost sm" id="cAi">✨ Compléter via l'IA</button>
       </div></div>
     <div id="coverPick" hidden></div>
     <div class="field"><label>Collection</label><select id="fColl">${collOptions(it.collectionId || ui.lastCollection, { allowNew: true })}</select></div>
@@ -1063,7 +1023,7 @@ function openItemForm(src, isNew = !getItem(src.id), startBlob = null) {
   const setPreview = async url => { $('#fcov').innerHTML = `<div class="cover"><img src="${esc(url)}" alt="" referrerpolicy="no-referrer"></div>`; };
   if (it.cover && !getItem(it.id)) coverURL(it.cover).then(u => u && setPreview(u));
   const setBlob = blob => { newCoverBlob = blob; if (newCoverURL) URL.revokeObjectURL(newCoverURL); newCoverURL = URL.createObjectURL(blob); setPreview(newCoverURL); };
-  if (startBlob) setBlob(startBlob); // ajout rapide par photo sans IA
+  if (startBlob) setBlob(startBlob); // ajout rapide par photo
   if (startBlob && isNew) setTimeout(() => $('#fTitle')?.focus(), 350);
   const fill = (o, overwrite = false) => {
     const map = { title: 'fTitle', subtitle: 'fSubtitle', creators: 'fCreators', series: 'fSeries', volume: 'fVolume', publisher: 'fPublisher', year: 'fYear', format: 'fFormat', genre: 'fGenre', language: 'fLanguage', description: 'fDesc', isbn: 'fIsbn' };
@@ -1091,13 +1051,6 @@ function openItemForm(src, isNew = !getItem(src.id), startBlob = null) {
   };
   $('#cWeb').onclick = () => searchCovers('');
   $('#cUrl').onclick = () => { const u = prompt("URL de l'image :", it.cover?.type === 'url' ? it.cover.src : ''); if (u) { it.cover = { type: 'url', src: u.trim() }; newCoverBlob = null; setPreview(u.trim()); } };
-  $('#cAi').onclick = async () => {
-    let blob = newCoverBlob;
-    if (!blob) { const [file] = await pickImages({ camera: true }); if (!file) return; blob = await canvasToBlob(drawScaled(await fileToImage(file), 1568), 0.85); setBlob(await canvasToBlob(drawScaled(await fileToImage(file), 900), 0.8)); }
-    const btn = $('#cAi'); btn.disabled = true; btn.textContent = '✨ Analyse…';
-    try { const r = await askAI([await blobToB64(blob)], aiPrompt(false)); const x = r.items?.[0]; if (x) { fill(x); toast('Champs vides complétés par l\'IA'); } else toast("L'IA n'a rien reconnu"); }
-    catch (e) { toast(e.message); } finally { btn.disabled = false; btn.textContent = '✨ Compléter via l\'IA'; }
-  };
   $('#fLookup').onclick = async () => {
     const code = cleanCode($('#fIsbn').value); if (!code) return toast('Saisis un ISBN / EAN');
     const btn = $('#fLookup'); btn.disabled = true; btn.textContent = '…';
@@ -1149,20 +1102,32 @@ function openCollectionForm(c) {
 function openAddMenu(preColl) {
   const sel = preColl || ui.lastCollection || '';
   const b = openSheet('Ajouter', `
-    <div class="cols"><div class="field"><label>Dans la collection</label><select id="aColl"><option value="">✨ Auto (choix de l'IA)</option>${collOptions(sel)}</select></div>
+    <div class="cols"><div class="field"><label>Dans la collection</label><select id="aColl">${collOptions(sel)}</select></div>
     <div class="field"><label>Statut</label><select id="aStatus">${Object.entries(STATUS).map(([k, v]) => `<option value="${k}" ${k === ui.lastStatus ? 'selected' : ''}>${v}</option>`).join('')}</select></div></div>
     <div class="menu">
-      <button class="ai" id="mAi1"><span class="ic">📸</span><span><b>Photo → fiche (IA)</b><small>Prends l'objet en photo : titre, auteur, série, tome, éditeur… sont remplis automatiquement</small></span></button>
-      <button class="ai" id="mAiN"><span class="ic">🗂️</span><span><b>Plusieurs objets d'un coup (IA)</b><small>Photo d'une étagère, d'une pile ou de tranches : une fiche par objet</small></span></button>
-      <button class="ai" id="mAiG"><span class="ic">🖼️</span><span><b>Depuis la galerie (IA)</b><small>Une ou plusieurs photos existantes</small></span></button>
-      <button id="mPhoto"><span class="ic">📷</span><span><b>Photo sans IA</b><small>La photo devient l'image de la fiche, tu tapes juste le titre. Plusieurs photos depuis la galerie : une fiche par photo</small></span></button>
+      <button class="ai" id="mTriCam"><span class="ic">📸</span><span><b>Photo → à identifier</b><small>Prends l'objet en photo : la fiche est créée avec la photo, le tri 🛠️ de l'accueil la remplit ensuite</small></span></button>
+      <button class="ai" id="mTriGal"><span class="ic">🖼️</span><span><b>Depuis la galerie → à identifier</b><small>Une ou plusieurs photos : une fiche par photo</small></span></button>
+      <button id="mPhoto"><span class="ic">📷</span><span><b>Photo + je tape le titre</b><small>La photo devient l'image de la fiche, tu remplis toi-même</small></span></button>
       <button id="mScan"><span class="ic">▦</span><span><b>Scanner des codes-barres</b><small>En rafale, comme Libib : ISBN → fiche + couverture</small></span></button>
       <button id="mManual"><span class="ic">✍️</span><span><b>Saisie manuelle</b><small>Remplir la fiche soi-même</small></span></button>
     </div>`);
   const opts = () => { ui.lastStatus = $('#aStatus').value; saveUI(); return { coll: $('#aColl').value, status: $('#aStatus').value }; };
-  $('#mAi1').onclick = async () => { const o = opts(); const files = await pickImages({ camera: true }); if (files.length) runAI(files, false, o); };
-  $('#mAiN').onclick = async () => { const o = opts(); const files = await pickImages({ camera: true }); if (files.length) runAI(files, true, o); };
-  $('#mAiG').onclick = async () => { const o = opts(); const files = await pickImages({ multiple: true }); if (files.length) runAI(files, null, o); }; // chaque photo : l'IA détecte seule s'il y a un ou plusieurs objets
+  // Photo(s) → une fiche par photo, statut « à identifier » : rien ne part ailleurs que dans ton dépôt
+  const toIdentify = async camera => {
+    const o = opts(), cid = o.coll || preColl || data.collections[0]?.id || '';
+    if (!cid) { toast('Crée d\'abord une collection'); return; }
+    const files = await pickImages({ camera, multiple: !camera });
+    if (!files.length) return;
+    const made = [];
+    for (const f of files) {
+      try { const it = { ...blankItem(cid), status: o.status, title: 'À identifier', tri: 'à identifier', source: 'photo' }; it.cover = await storeCoverBlob(it.id, await canvasToBlob(drawScaled(await fileToImage(f), 1568), 0.85)); made.push(it); } catch { }
+    }
+    if (!made.length) return toast('Photo illisible');
+    upsertItems(made); closeSheet(); toast(`${made.length} objet${made.length > 1 ? 's' : ''} à identifier 🛠️`);
+    location.hash = '#/c/' + cid; render();
+  };
+  $('#mTriCam').onclick = () => toIdentify(true);
+  $('#mTriGal').onclick = () => toIdentify(false);
   $('#mScan').onclick = () => openScanner(opts());
   $('#mPhoto').onclick = async () => {
     const o = opts(), cid = o.coll || preColl || data.collections[0]?.id || '';
@@ -1172,226 +1137,13 @@ function openAddMenu(preColl) {
     const blobs = [];
     for (const f of files) { try { blobs.push(await canvasToBlob(drawScaled(await fileToImage(f), 900), 0.8)); } catch { } }
     if (blobs.length === 1) return openItemForm({ ...blankItem(cid), status: o.status }, true, blobs[0]);
-    // plusieurs photos : une fiche « À nommer » par photo, à compléter ensuite (sélection multiple, ou ✨ Compléter (IA) si besoin)
+    // plusieurs photos : une fiche « À nommer » par photo, à compléter ensuite
     const made = [];
     for (let k = 0; k < blobs.length; k++) { const it = { ...blankItem(cid), status: o.status, title: `À nommer ${k + 1}`, tags: ['à nommer'] }; it.cover = await storeCoverBlob(it.id, blobs[k]); made.push(it); }
     upsertItems(made); closeSheet(); toast(`${made.length} fiches créées avec leur photo : touche-les pour taper le titre`);
     location.hash = '#/c/' + cid; render();
   };
   $('#mManual').onclick = () => { const o = opts(); let cid = o.coll || data.collections[0]?.id || ''; openItemForm({ ...blankItem(cid), status: o.status }, true); };
-}
-
-/* ---------- Ajout rapide IA ---------- */
-
-// Étape 1 : Gemini décrit librement chaque objet, comme dans l'appli Gemini (réflexion + recherche Google).
-function describePrompt(multi) {
-  const colls = data.collections.map(c => `${c.name} (${c.type})`).join(', ') || 'aucune';
-  return `Tu catalogues une collection personnelle (livres, BD, comics, mangas, vinyles/CD, films, jeux vidéo, jeux de société, LEGO, figurines…).
-${multi ? `Liste TOUS les objets visibles sur la photo, de gauche à droite puis de haut en bas, même partiellement visibles : une photo d'étagère en contient souvent 10 à 30. Ne regroupe JAMAIS plusieurs objets en une fiche : une série dont 11 tomes sont visibles = 11 fiches, chacune avec son titre complet et son numéro (ex. « Injustice : Les Dieux sont parmi nous – Année 1, 1re partie », tome 1).` : `Identifie l'objet principal de la photo.`}
-Lis tout le texte visible : tranches (texte souvent vertical, à tourner mentalement), couvertures, logos d'éditeur, de collection ou de console, numéros de tome. Puis utilise tes connaissances, et la recherche Google si tu y as accès, pour compléter chaque fiche.
-Écris chaque fiche EXACTEMENT dans ce format, une ligne par champ (laisse vide ce que tu ne sais pas), et sépare les fiches par une ligne « --- » :
-Type : livre, bd, manga, musique, film, jeu_video, jeu_societe, lego, figurine ou autre
-Titre : titre exact complet de cet objet (édition française si c'est elle)
-Titre original : titre original ou anglais s'il diffère (ex. Pokémon Écarlate → Pokémon Scarlet)
-Auteurs : auteur(s), artiste(s) ou studio, séparés par des virgules
-Série : série, saga ou cycle
-Tome : numéro (chiffres)
-Éditeur : éditeur, label ou studio
-Année : année de parution (4 chiffres)
-Format : ex. Relié, Broché, Poche, Switch, PS5, Blu-ray, Vinyle…
-ISBN : ISBN-13 ou EAN si tu le connais avec certitude
-Genre : genre principal
-Langue : langue de l'édition
-Résumé : 1 ou 2 phrases
-Collection : nom exact d'une de mes collections qui convient, sinon vide (mes collections : ${colls})
-Position : x0,y0,x1,y1 (rectangle de l'objet dans la photo, en fractions de 0 à 1, origine en haut à gauche)
-Certitude : sûr, probable ou incertain
-Texte lu : le texte réellement visible sur l'objet`;
-}
-// Lecture locale des fiches (pas de 2e appel à l'IA) : chaque « Champ : valeur » devient une propriété.
-const FIELDS = { type: 'type', titre: 'title', 'titre original': 'originalTitle', auteurs: 'creators', auteur: 'creators', serie: 'series', tome: 'volume', editeur: 'publisher', annee: 'year', format: 'format', isbn: 'isbn', genre: 'genre', langue: 'language', resume: 'description', collection: 'collection', position: 'bbox', certitude: 'confidence', 'texte lu': 'seen' };
-function parseFiches(text) {
-  const out = [];
-  for (const block of String(text).split(/^\s*(?:-{3,}|#{2,4}\s.*|\*{3,})\s*$/m)) {
-    const it = {};
-    for (const line of block.split('\n')) {
-      const m = line.match(/^\s*(?:[-*•]\s*)?\**\s*([A-Za-zÀ-ÿ ]{3,16}?)\s*\**\s*:\s*\**\s*(.*?)\s*$/);
-      if (!m) continue;
-      const k = FIELDS[norm(m[1])]; if (!k || !m[2]) continue;
-      it[k] = m[2].replace(/\*+/g, '').trim();
-    }
-    if (!it.title && !it.seen) continue;
-    it.type = norm(it.type || '').replace(/[\s-]+/g, '_').replace('jeu_de_societe', 'jeu_societe').replace('jeux_video', 'jeu_video').replace(/^bande_dessinee$/, 'bd');
-    if (!TYPES[it.type]) it.type = it.type.includes('jeu') ? 'jeu_video' : 'autre';
-    const c = norm(it.confidence || ''); it.confidence = c.startsWith('sur') ? 0.9 : c.startsWith('prob') ? 0.65 : c ? 0.35 : 0.5;
-    const nums = String(it.bbox || '').match(/[\d.]+/g); it.bbox = nums && nums.length >= 4 ? nums.slice(0, 4).map(Number).map(n => n > 1 ? n / 100 : n) : null;
-    if (/^(vide|aucun|aucune|inconnu|-|n\/a)$/i.test(it.title || '')) it.title = '';
-    for (const k of Object.keys(it)) if (typeof it[k] === 'string' && /^(vide|aucun|aucune|inconnu|non|-|n\/a|néant)$/i.test(it[k])) it[k] = '';
-    out.push(it);
-  }
-  return out;
-}
-// Étape 2 : les fiches sont converties en JSON pour l'appli (texte seul, rapide).
-function structurePrompt(fiches, multi) {
-  const spec = aiPrompt(multi);
-  return `Voici des fiches d'objets rédigées à partir d'une photo de collection :
------
-${fiches.slice(0, 30000)}
------
-Convertis CHAQUE fiche en un objet du JSON demandé ci-dessous, sans en ajouter ni en retirer, en gardant les informations des fiches. "confidence" : sûr = 0.9, probable = 0.65, incertain = 0.35. "bbox" = la Position de la fiche. "seen" = le Texte lu.
-${spec.slice(spec.indexOf("Collections de l'utilisateur"))}`;
-}
-let aiErrors = [];
-async function describeAndStructure(b64, multi) {
-  const fiches = await kitAI([{ mime: 'image/jpeg', b64 }, describePrompt(multi)], { key: S.aiKey, model: S.aiModel, maxTokens: 16000, json: false, search: true });
-  const items = parseFiches(fiches);
-  if (items.length) return { items }; // cas normal : lu sur place, aucune demande de plus
-  // format non respecté : on demande la mise en forme JSON (Flash-Lite, quota séparé)
-  return parseJsonLoose(await kitAI([structurePrompt(fiches, multi)], { key: S.aiKey, model: 'gemini-flash-lite-latest', maxTokens: 16000 }));
-}
-
-// 2e passage pour une étagère : chaque objet est recadré en pleine définition et relu de près,
-// 6 tranches par envoi. Améliore nettement la lecture des tranches de livres, BD et jeux.
-async function closeLook(img, found, k, n) {
-  const withBox = found.filter(c => Array.isArray(c.bbox) && c.bbox.length === 4);
-  for (let i = 0; i < withBox.length; i += 6) {
-    const batch = withBox.slice(i, i + 6);
-    $('#aiStep').textContent = `Photo ${k + 1}/${n} : lecture de près ${Math.min(i + 6, withBox.length)}/${withBox.length}…`;
-    const crops = await Promise.all(batch.map(async c => blobToB64(await canvasToBlob(drawScaled(img, 1400, c.bbox), 0.92))));
-    const prompt = `Voici ${batch.length} images numérotées de 1 à ${batch.length}, dans l'ordre. Chacune montre UN seul objet recadré dans une photo d'étagère : le plus souvent sa tranche (texte vertical à tourner mentalement), parfois sa couverture.
-Pour chaque image, lis tout le texte visible et identifie l'objet avec tes connaissances (titre exact, auteur, série, tome, éditeur, plateforme). Indices du premier passage, à corriger s'ils sont faux :
-${batch.map((c, j) => `${j + 1}. ${[c.title, c.creators, c.series && c.series + (c.volume ? ' T' + c.volume : ''), c.seen && 'texte lu : « ' + c.seen + ' »'].filter(Boolean).join(' · ') || 'non identifié'}`).join('\n')}
-${aiPrompt(false).split('Réponds UNIQUEMENT')[1] ? 'Réponds UNIQUEMENT' + aiPrompt(false).split('Réponds UNIQUEMENT')[1].replace('{"items":[{', '{"items":[{"i":numéro de l\'image,') : ''}`;
-    try {
-      const r = await kitAI([...crops.map(b => ({ mime: 'image/jpeg', b64: b })), prompt], { key: S.aiKey, model: S.aiModel, maxTokens: 6000 });
-      const j = parseJsonLoose(r);
-      for (const x of j.items || []) {
-        const c = batch[(+x.i || 0) - 1]; if (!c) continue;
-        if ((x.confidence ?? 0) + 0.05 < (c.confidence ?? 0) || !x.title) continue; // on garde le 1er passage s'il était plus sûr
-        for (const key of ['type', 'title', 'creators', 'series', 'volume', 'publisher', 'year', 'isbn', 'format', 'genre', 'language', 'description', 'seen', 'confidence']) if (x[key] !== undefined && x[key] !== '') c[key] = x[key];
-      }
-    } catch (e) { console.warn('Lecture de près impossible', e); } // le 1er passage reste valable
-  }
-}
-async function runAI(files, multi, opts) {
-  if (!S.aiKey) { toast("Ajoute d'abord ta clé Gemini"); openSettings(); return; }
-  const body = openSheet('Analyse IA', `<div id="aiPrev"></div><div class="spinner"></div><p class="hint" style="text-align:center" id="aiStep">Préparation de la photo…</p>`);
-  const cands = []; aiErrors = [];
-  try {
-    for (let k = 0; k < files.length; k++) {
-      const img = await fileToImage(files[k]);
-      const isMulti0 = multi === null ? true : multi;
-      const full = await canvasToBlob(drawScaled(img, isMulti0 ? 3072 : 1568), isMulti0 ? 0.9 : 0.85); // étagère : haute définition pour lire les tranches
-      const prevU = URL.createObjectURL(full);
-      $('#aiPrev').innerHTML = `<img class="preview-img" src="${prevU}" alt="">`;
-      $('#aiStep').textContent = `Analyse de la photo ${k + 1}/${files.length}…`;
-      const isMulti = multi === null ? true : multi; // galerie 1 photo : l'IA détecte seule
-      $('#aiStep').textContent = `Photo ${k + 1}/${files.length} : Gemini identifie les objets…`;
-      let r;
-      try { r = await describeAndStructure(await blobToB64(full), isMulti); }
-      catch (e) { aiErrors.push(`Photo ${k + 1} : ${e.message}`); if (/quota/i.test(e.message)) break; continue; } // une photo en échec n'arrête pas les autres (sauf quota épuisé)
-      const found = (r.items || []).slice(0, isMulti ? 60 : 1).map(x => ({ ...x, _img: img, _uid: uid() }));
-      const unsure = found.filter(c => !c.title || (c.confidence ?? 0) < 0.5);
-      if (isMulti && unsure.length) await closeLook(img, unsure, k, files.length); // relecture de près des seuls objets incertains
-      cands.push(...found);
-    }
-    if (!cands.length) { body.innerHTML = `<div class="empty"><div class="big">🤔</div><p>${aiErrors.length ? aiErrors.map(esc).join('<br>') : 'Aucun objet reconnu. Essaie avec une photo plus nette, de face, bien éclairée.'}</p></div>`; return; }
-    $('#aiStep').textContent = `Recherche des couvertures et compléments…`;
-    await Promise.all(cands.map(async c => {
-      c.volume = String(c.volume ?? '').replace(/[^\dA-Za-z.\-]/g, '');
-      c.year = String(c.year ?? '').match(/\d{4}/)?.[0] || '';
-      const code = cleanCode(c.isbn); c.isbn = code;
-      if (code && isBookCode(code)) {
-        const r = await lookupISBN(code).catch(() => null);
-        if (r) { for (const k of ['title', 'creators', 'publisher', 'year', 'description', 'genre', 'subtitle']) if (!c[k] && r[k]) c[k] = r[k]; }
-      }
-      if (!c.title && c.seen && (c.seen.match(/[A-Za-zÀ-ÿ]{3,}/g) || []).length >= 2 && /^(livre|bd|manga|)$/.test(c.type || '')) { // assez de mots lus pour une recherche fiable
-        try { const j = await (await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(c.seen.slice(0, 120))}&maxResults=1`)).json(); const v = j.items?.[0]?.volumeInfo; if (v?.title) { c.title = v.title; c.creators ||= (v.authors || []).join(', '); c.publisher ||= v.publisher || ''; c.year ||= (v.publishedDate || '').slice(0, 4); c.type ||= 'livre'; c.confidence = Math.min(c.confidence ?? 0.4, 0.5); } } catch {}
-      }
-      if (c.title) { $('#aiStep').textContent = 'Recherche de belles images…'; const u = await findCover(c).catch(() => ''); if (u) c._online = u; if (c._foundIsbn) c.isbn = c._foundIsbn; else if (c._badIsbn) c.isbn = ''; }
-      const multiPhoto = cands.filter(o => o._img === c._img).length > 1;
-      c._crop = multiPhoto && Array.isArray(c.bbox) && c.bbox.length === 4;
-      c._photoBlob = await canvasToBlob(drawScaled(c._img, 900, c._crop ? c.bbox : null), 0.8);
-      c._photoURL = URL.createObjectURL(c._photoBlob);
-      c._cover = c._online ? 'online' : 'none'; // rien de convenable en ligne : Rocket plutôt que la photo
-      c._on = true;
-      c._status = opts.status;
-      c._coll = opts.coll || matchCollection(c);
-    }));
-    renderReview(cands);
-    if (aiErrors.length) $('#sheetBody').insertAdjacentHTML('afterbegin', `<div class="warn" style="margin-bottom:10px">⚠︎ ${aiErrors.map(esc).join('<br>')}</div>`);
-  } catch (e) { console.error(e); body.innerHTML = `<div class="empty"><div class="big">⚠️</div><p>${esc(e.message)}</p><button class="btn" id="aiSet">Réglages IA</button></div>`; $('#aiSet').onclick = openSettings; }
-}
-function matchCollection(c) {
-  if (c.collection) { const m = data.collections.find(x => norm(x.name) === norm(c.collection)); if (m && (m.type === c.type || !TYPES[c.type] || c.type === 'autre')) return m.id; } // une BD n'atterrit pas dans « Jeux vidéo »
-  const t = TYPES[c.type] ? c.type : 'autre';
-  const byType = data.collections.find(x => x.type === t); if (byType) return byType.id;
-  return 'new:' + t;
-}
-function renderReview(cands) {
-  const pool = data.items;
-  const html = cands.map(c => {
-    const dup = findDuplicate({ id: '_', isbn: c.isbn, title: c.title, volume: c.volume, collectionId: c._coll }, pool);
-    const src = c._cover === 'online' ? c._online : c._cover === 'photo' ? c._photoURL : '';
-    const T = TYPES[c.type] || TYPES.autre;
-    return `<div class="cand ${c._on ? '' : 'off'}" data-u="${c._uid}">
-      <div class="cand-head"><div class="cover">${src ? `<img src="${esc(src)}" alt="" referrerpolicy="no-referrer">` : rocketPH(T.color)}</div>
-        <div class="f">
-          <input data-k="title" value="${esc(c.title)}" placeholder="Titre">
-          <input data-k="creators" value="${esc(c.creators)}" placeholder="${T.creator}">
-          <div style="display:flex;gap:6px"><input data-k="series" value="${esc(c.series)}" placeholder="Série" style="flex:2"><input data-k="volume" value="${esc(c.volume)}" placeholder="Tome" style="flex:1"></div>
-        </div></div>
-      <div class="cols" style="margin-top:4px"><select data-k="_coll" class="chip" style="border-radius:10px;width:100%;min-width:0">${collOptions(c._coll, { allowNew: true })}</select><select data-k="_status" class="chip" style="border-radius:10px;width:100%;min-width:0">${Object.entries(STATUS).map(([k, v]) => `<option value="${k}" ${k === c._status ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
-      <div class="covopts">${c._online ? `<button class="chip ${c._cover === 'online' ? 'on' : ''}" data-cov="online">Couverture en ligne</button>` : ''}<button class="chip ${c._cover === 'photo' ? 'on' : ''}" data-cov="photo">${c._crop ? 'Recadrage photo' : 'Ma photo'}</button><button class="chip ${c._cover === 'none' ? 'on' : ''}" data-cov="none">Rocket</button></div>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;gap:8px">
-        <span>${[c.publisher, c.year, c.format, c.isbn].filter(Boolean).map(esc).join(' · ')}</span>
-        <span style="display:flex;gap:6px;align-items:center">${typeof c.confidence === 'number' ? `<span class="conf">${Math.round(c.confidence * 100)} %</span>` : ''}<label style="display:flex;gap:4px;align-items:center"><input type="checkbox" data-on ${c._on ? 'checked' : ''}> garder</label></span>
-      </div>
-      ${(c.confidence ?? 1) < 0.6 && c.seen ? `<div class="hint" style="margin-top:6px">Pas sûr. Texte lu sur l'objet : « ${esc(c.seen)} » — corrige le titre si besoin, ou décoche-le.</div>` : ''}
-      ${dup ? `<div class="warn">⚠︎ Déjà dans ta collection : « ${esc(dup.title)} »</div>` : ''}
-    </div>`;
-  }).join('');
-  const nOn = cands.filter(c => c._on).length;
-  openSheet(`${cands.length} objet${cands.length > 1 ? 's' : ''} reconnu${cands.length > 1 ? 's' : ''}`, `
-    <div id="rv"><p class="hint" style="margin-top:0">Vérifie et corrige si besoin, puis valide. Les autres infos trouvées (éditeur, année, genre, résumé…) sont ajoutées automatiquement.</p>
-    ${html}
-    <button class="btn block" id="rSave">Ajouter ${nOn} objet${nOn > 1 ? 's' : ''}</button></div>`,
-    { onClose: () => setTimeout(() => cands.forEach(c => c._photoURL && URL.revokeObjectURL(c._photoURL)), 3000) });
-  const find = el => cands.find(c => c._uid === el.closest('[data-u]')?.dataset.u) || {};
-  const rv = $('#rv');
-  rv.addEventListener('input', e => { const k = e.target.dataset.k; if (k) find(e.target)[k] = e.target.value; });
-  rv.addEventListener('change', e => {
-    const c = find(e.target);
-    if (e.target.dataset.k) { c[e.target.dataset.k] = e.target.value; }
-    if (e.target.hasAttribute('data-on')) { c._on = e.target.checked; e.target.closest('.cand').classList.toggle('off', !c._on); const n = cands.filter(x => x._on).length; $('#rSave').textContent = `Ajouter ${n} objet${n > 1 ? 's' : ''}`; }
-  });
-  rv.addEventListener('click', e => {
-    const b = e.target.closest('[data-cov]'); if (!b) return;
-    const c = find(b); c._cover = b.dataset.cov;
-    const box = b.closest('.cand'); box.querySelectorAll('[data-cov]').forEach(x => x.classList.toggle('on', x === b));
-    const src = c._cover === 'online' ? c._online : c._cover === 'photo' ? c._photoURL : '';
-    const T = TYPES[c.type] || TYPES.autre;
-    box.querySelector('.cover').innerHTML = src ? `<img src="${esc(src)}" alt="" referrerpolicy="no-referrer">` : rocketPH(T.color);
-  });
-  $('#rSave').onclick = async () => {
-    const btn = $('#rSave'); btn.disabled = true; btn.textContent = 'Ajout…';
-    const created = {}; const list = [];
-    for (const c of cands.filter(x => x._on && String(x.title || '').trim())) {
-      let cid = c._coll;
-      if (cid.startsWith('new:')) cid = created[cid] ||= newCollection(cid.slice(4)).id;
-      const it = { ...blankItem(cid), title: c.title.trim(), originalTitle: c.originalTitle || '', subtitle: c.subtitle || '', creators: c.creators || '', series: c.series || '', volume: c.volume || '', publisher: c.publisher || '', year: c.year || '', isbn: c.isbn || '', format: c.format || '', genre: c.genre || '', language: c.language || '', tags: Array.isArray(c.tags) ? c.tags.slice(0, 8) : [], description: c.description || '', status: c._status, source: 'ia' };
-      if (it.status === 'possede') it.acquiredAt = todayISO();
-      if (c._cover === 'online') it.cover = { type: 'url', src: c._online };
-      else if (c._cover === 'photo') it.cover = await storeCoverBlob(it.id, c._photoBlob);
-      list.push(it);
-      ui.lastCollection = cid;
-    }
-    saveUI();
-    if (list.length) upsertItems(list);
-    render();
-    toast(`${list.length} objet${list.length > 1 ? 's' : ''} ajouté${list.length > 1 ? 's' : ''} ✓`);
-    if (list.length === 1) openDetail(list[0].id); else closeSheet();
-  };
 }
 
 /* ---------- Scanner de codes-barres (rafale) ---------- */
@@ -1401,7 +1153,7 @@ async function openScanner(opts) {
   const hasBD = 'BarcodeDetector' in window;
   const body = openSheet('Scanner', `
     ${hasBD ? `<div class="scanner"><video id="sv" playsinline muted></video><div class="aim"></div></div><p class="hint">Vise le code-barres : chaque code détecté s'ajoute à la liste.</p>` :
-      `<div class="card"><b>Scan vidéo non disponible sur ce navigateur</b><p class="hint">(c'est le cas sur iPhone/Safari). Prends le code-barres en photo, l'IA lit les chiffres — ou saisis-le.</p><button class="btn ghost block" id="sPhoto">📷 Photo du code-barres</button></div>`}
+      `<div class="card"><b>Scan vidéo non disponible sur ce navigateur</b><p class="hint">(c'est le cas sur iPhone/Safari). Saisis le code à la main ci-dessous, ou ajoute l'objet en photo « à identifier ».</p></div>`}
     <div class="cols" style="margin-top:12px"><div class="field" style="margin:0"><input id="sCode" inputmode="numeric" placeholder="ISBN / EAN à la main"></div><button class="btn ghost" id="sAdd">Chercher</button></div>
     <div id="sList" style="margin-top:12px"></div>
     <button class="btn block" id="sSave" disabled>Ajouter</button>`,
@@ -1427,12 +1179,6 @@ async function openScanner(opts) {
   };
   $('#sAdd').onclick = () => { handle($('#sCode').value); $('#sCode').value = ''; };
   $('#sCode').addEventListener('keydown', e => { if (e.key === 'Enter') $('#sAdd').click(); });
-  if ($('#sPhoto')) $('#sPhoto').onclick = async () => {
-    const [file] = await pickImages({ camera: true }); if (!file) return;
-    const btn = $('#sPhoto'); btn.disabled = true; btn.textContent = 'Lecture…';
-    try { const r = await askAI([await blobToB64(await canvasToBlob(drawScaled(await fileToImage(file), 1568), 0.9))], BARCODE_PROMPT, 300); (r.codes || []).forEach(handle); if (!(r.codes || []).length) toast('Aucun code lisible'); }
-    catch (e) { toast(e.message); } finally { btn.disabled = false; btn.textContent = '📷 Photo du code-barres'; }
-  };
   $('#sSave').onclick = () => {
     let cid = opts.coll || data.collections.find(c => c.type === 'livre')?.id || data.collections[0]?.id;
     if (!cid) cid = newCollection('livre').id;
@@ -1539,17 +1285,14 @@ function openSettings() {
     <h3 style="margin:4px 0 8px">🌐 Belles images</h3>
     <p class="hint" style="margin-top:0">${data.items.filter(i => !i.cover).length} objet(s) sans image (Rocket). L'appli cherche leur couverture, jaquette ou affiche en ligne, et revérifie les tomes qui partagent la même couverture.</p>
     <div class="btns" style="margin-bottom:18px"><button class="btn ghost sm" id="sCovers">Trouver et corriger les images</button></div>
-    <h3 style="margin:4px 0 8px">✨ Ajout rapide par IA</h3>
-    ${f('sAiKey', 'Clé API Gemini (partagée par toutes les applis)', S.aiKey, 'type="password" autocomplete="off" placeholder="AIza…"')}
-    <div class="field"><label for="sAiModel">Modèle</label><select id="sAiModel">${AI_MODELS.map(([v, l]) => `<option value="${v}" ${v === S.aiModel ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
-    <p class="hint">La clé et le jeton restent sur cet appareil (stockage local du navigateur) ; ils ne sont jamais écrits dans le dépôt.</p>
+    <p class="hint">Le jeton reste sur cet appareil (stockage local du navigateur) ; il n'est jamais écrit dans le dépôt.</p>
     <h3 style="margin:14px 0 8px">⌂ Hub</h3>
     ${f('sHub', "Adresse de l'écran d'accueil (tuiles)", S.hubUrl)}
     <button class="btn block" id="sSave">Enregistrer</button>
     <button class="btn ghost block" id="sLogout" style="margin-top:12px;color:#ff4f5e">Se déconnecter de cet appareil</button>
     <button class="btn danger block" id="sReset" style="margin-top:10px">Vider les données locales de cet appareil</button>`);
-  const collect = () => ({ owner: $('#sOwner').value.trim(), repo: $('#sRepo').value.trim(), branch: $('#sBranch').value.trim() || 'main', path: $('#sPath').value.trim() || DEFAULT_SETTINGS.path, mediaDir: $('#sMedia').value.trim() || DEFAULT_SETTINGS.mediaDir, token: $('#sToken').value.trim(), aiKey: $('#sAiKey').value.trim(), aiModel: $('#sAiModel').value, hubUrl: $('#sHub').value.trim() || './index.html' });
-  const apply = () => { S = collect(); write(LS.settings, S); kitSetGH({ owner: S.owner, repo: S.repo, branch: S.branch, token: S.token }); kitSetAI({ key: S.aiKey, model: S.aiModel }); $('#hubLink').href = S.hubUrl; };
+  const collect = () => ({ owner: $('#sOwner').value.trim(), repo: $('#sRepo').value.trim(), branch: $('#sBranch').value.trim() || 'main', path: $('#sPath').value.trim() || DEFAULT_SETTINGS.path, mediaDir: $('#sMedia').value.trim() || DEFAULT_SETTINGS.mediaDir, token: $('#sToken').value.trim(), hubUrl: $('#sHub').value.trim() || './index.html' });
+  const apply = () => { S = collect(); write(LS.settings, S); kitSetGH({ owner: S.owner, repo: S.repo, branch: S.branch, token: S.token }); $('#hubLink').href = S.hubUrl; };
   $('#sTest').onclick = async () => {
     apply(); if (!gh.ok()) return toast('Renseigne propriétaire, dépôt et jeton');
     try { const r = await fetch(`https://api.github.com/repos/${S.owner}/${S.repo}`, { headers: gh.h() }); if (!r.ok) throw new Error(await errMsg(r)); const j = await r.json(); const f = await gh.getText(S.path); toast(`✓ ${j.full_name}${j.private ? ' (privé)' : ''} — ${f ? 'fichier trouvé' : 'fichier créé à la 1re synchro'}`); }

@@ -4,7 +4,7 @@
    - Thème clair / sombre, couleur de l'app
    - Hero : paysage + bande à ronds découpés + coulures organiques
    - Rocket (mascotte), icônes abstraites
-   - Réglages communs (GitHub, IA) et synchro GitHub générique
+   - Réglages communs (GitHub, tri 🛠️) et synchro GitHub générique
    - Panneau, toast, sons
    ========================================================== */
 
@@ -50,24 +50,24 @@ export function applyTheme() {
   return dark;
 }
 let CURRENT_APP = 'hub';
-const AI_APPS = ['hub', 'budget', 'paperasse', 'collections'];
 /* ---------- Réglages communs synchronisés (JSON_HUB.json) ---------- */
-// Prénom, thème, sons et modèle IA suivent l'utilisateur d'un appareil à l'autre.
-// Seuls le jeton GitHub et la clé Gemini restent propres à chaque appareil.
+// Prénom, thème et sons suivent l'utilisateur d'un appareil à l'autre.
+// Le jeton GitHub et le lien du tri 🛠️ restent propres à chaque appareil.
+// Ancienne clé du service retiré en v2.14 : effacée de l'appareil et de JSON_HUB.json dès le chargement.
+try { localStorage.removeItem('hub.ai'); localStorage.removeItem('hub.ai.models'); } catch { }
+const dropOldKey = d => { if (d?.settings && ('aiKey' in d.settings || 'aiModel' in d.settings)) { const { aiKey, aiModel, ...rest } = d.settings; d.settings = rest; return true; } return false; };
 let hubDoc = null;
 function hubSync() {
   if (hubDoc) return hubDoc;
   hubDoc = new DocSync({ key: 'hub.data.v1', path: 'JSON_HUB.json', label: 'Réglages communs', lists: ['summaries'],
-    empty: () => { const prefs = read('hub.prefs', {}) || {}; return { app: 'hub', schema: 1, settings: { prefs, aiModel: (read('hub.ai', {}) || {}).model || '', aiKey: (read('hub.ai', {}) || {}).key || '' }, settingsAt: Object.keys(prefs).length ? now() : 0 }; },
-    onRemote: d => applyHubDoc(d) });
+    empty: () => { const prefs = read('hub.prefs', {}) || {}; return { app: 'hub', schema: 1, settings: { prefs }, settingsAt: Object.keys(prefs).length ? now() : 0 }; },
+    onRemote: d => { if (dropOldKey(d)) hubDoc.save(); applyHubDoc(d); } });
+  if (dropOldKey(hubDoc.data)) hubDoc.save();
   return hubDoc;
 }
 function applyHubDoc(d) {
   const s = d.settings || {}, before = JSON.stringify(read('hub.prefs', {}) || {});
   write('hub.prefs', { ...(read('hub.prefs', {}) || {}), ...(s.prefs || {}) });
-  const keyBefore = (read('hub.ai', {}) || {}).key || '';
-  if (s.aiModel || s.aiKey) write('hub.ai', { ...(read('hub.ai', {}) || {}), ...(s.aiModel ? { model: s.aiModel } : {}), ...(s.aiKey ? { key: s.aiKey } : {}) }); // clé Gemini commune à tous les appareils (choix de l'utilisateur, dépôt privé)
-  if (((read('hub.ai', {}) || {}).key || '') !== keyBefore) dispatchEvent(new Event('k-hubai')); // clé arrivée d'un autre appareil
   let fresh = false;
   for (const s2 of d.summaries || []) { const loc = read('hub.summary.' + s2.id, null); if (!loc || (loc.at || 0) < (s2.updatedAt || 0)) { const { id, createdAt, updatedAt, ...rest } = s2; write('hub.summary.' + id, { ...rest, at: updatedAt }); fresh = true; } }
   if (JSON.stringify(read('hub.prefs', {}) || {}) !== before) { applyTheme(); dispatchEvent(new Event('k-hubprefs')); }
@@ -87,12 +87,11 @@ export function publishSummary(app, s) {
 }
 export function pushHubPrefs() {
   const d = hubSync();
-  const ai = read('hub.ai', {}) || {};
-  d.data.settings = { prefs: read('hub.prefs', {}) || {}, aiModel: ai.model || '', aiKey: ai.key || '' };
+  d.data.settings = { prefs: read('hub.prefs', {}) || {} };
   d.data.settingsAt = now(); d.save();
 }
 import { hasTour, startTour, tourCSS } from './tour.js';
-export const APP_VERSION = '2.13.0';
+export const APP_VERSION = '2.14.0';
 export function initApp(appId) {
   CURRENT_APP = appId;
   // Service worker commun à toutes les pages, vérifié à chaque ouverture (les mises à jour arrivent sans attendre)
@@ -301,7 +300,7 @@ export function sound(type = 'click') {
   } catch { }
 }
 
-/* ---------- Réglages communs (GitHub + IA) ---------- */
+/* ---------- Réglages communs (GitHub) ---------- */
 export function getGH() {
   const hub = read('hub.github', {}) || {};
   const vio = read('violette_github', {}) || {};
@@ -314,114 +313,12 @@ export function setGH(g) {
   const vio = read('violette_github', {}) || {};
   write('violette_github', { ...vio, owner: g.owner, repo: g.repo, branch: g.branch, token: g.token }); // Violette lit sa propre copie
 }
-/* ---------- IA : Google Gemini, appelé directement depuis le téléphone ---------- */
-export const AI_MODELS = [['gemini-flash-latest', 'Gemini Flash — rapide (recommandé)'], ['gemini-pro-latest', 'Gemini Pro — le plus fin'], ['gemini-flash-lite-latest', 'Gemini Flash-Lite — économe']];
-export const AI_DEFAULT = 'gemini-flash-latest';
-const isGeminiModel = m => typeof m === 'string' && m.startsWith('gemini');
-const isGeminiKey = k => typeof k === 'string' && k && !k.startsWith('sk-ant');
-export function getAI() {
-  const ai = read('hub.ai', {}) || {};
-  return { key: isGeminiKey(ai.key) ? ai.key : '', model: isGeminiModel(ai.model) ? ai.model : AI_DEFAULT };
-}
-
-// Liste des modèles Gemini réellement ouverts à cette clé (Google en retire régulièrement) : demandée à Google, gardée 24 h.
-const MODELS_KEY = 'hub.ai.models';
-async function availableModels(key) {
-  const c = read(MODELS_KEY, null);
-  if (c && c.k === key.slice(-6) && Date.now() - c.at < 864e5) return c.list;
-  try {
-    const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', { headers: { 'x-goog-api-key': key } });
-    if (!r.ok) return null;
-    const j = await r.json();
-    const list = (j.models || []).filter(m => (m.supportedGenerationMethods || []).includes('generateContent')).map(m => m.name.replace(/^models\//, ''));
-    write(MODELS_KEY, { at: Date.now(), k: key.slice(-6), list });
-    return list;
-  } catch { return null; }
-}
-function forgetModel(m) { const c = read(MODELS_KEY, null); if (c) write(MODELS_KEY, { ...c, list: c.list.filter(x => x !== m) }); }
-const ver = m => parseFloat((m.match(/^gemini-(\d+(?:\.\d+)?)/) || [])[1] || 0);
-async function modelChain(key, wanted) {
-  const list = await availableModels(key);
-  if (!list) return [...new Set([wanted, 'gemini-flash-latest', 'gemini-flash-lite-latest', 'gemini-pro-latest'])];
-  const stable = kind => list.filter(m => new RegExp(`^gemini-\\d+(?:\\.\\d+)?-${kind}$`).test(m)).sort((a, b) => ver(b) - ver(a));
-  const flash = stable('flash'), lite = stable('flash-lite'), pro = stable('pro');
-  const kind = /lite/.test(wanted) ? 'lite' : /pro/.test(wanted) ? 'pro' : 'flash';
-  const order = kind === 'pro' ? [pro[0], flash[0], lite[0]] : kind === 'lite' ? [lite[0], flash[0], lite[1]] : [flash[0], lite[0], flash[1], pro[0]];
-  return [...new Set([list.includes(wanted) ? wanted : null, ...order].filter(Boolean))].slice(0, 4);
-}
-// Lit le premier objet JSON complet d'une réponse d'IA, même entouré de texte, de ``` ou suivi d'un second bloc.
-export function parseJsonLoose(t) {
-  t = String(t || '').replace(/```(?:json)?/gi, '');
-  const start = t.search(/[{[]/);
-  if (start < 0) throw new Error('Réponse IA illisible');
-  const stack = []; let inStr = false, esc2 = false, end = -1;
-  for (let i = start; i < t.length; i++) {
-    const c = t[i];
-    if (inStr) { if (esc2) esc2 = false; else if (c === '\\') esc2 = true; else if (c === '"') inStr = false; continue; }
-    if (c === '"') inStr = true;
-    else if (c === '{' || c === '[') stack.push(c === '{' ? '}' : ']');
-    else if (c === '}' || c === ']') { stack.pop(); if (!stack.length) { end = i; break; } }
-  }
-  let s = end > 0 ? t.slice(start, end + 1) : t.slice(start);
-  try { return JSON.parse(s); } catch { }
-  if (end < 0) s = (inStr ? s + '"' : s).replace(/,\s*$/, '') + stack.reverse().join(''); // réponse coupée en route
-  s = s.replace(/,\s*([}\]])/g, '$1'); // virgules en trop
-  try { return JSON.parse(s); } catch (e) { throw new Error('Réponse IA illisible, réessaie (' + e.message.slice(0, 60) + ')'); }
-}
-// parts : chaînes de texte ou { mime, b64 } (images JPEG/PNG, PDF). Renvoie le texte de la réponse.
-// search : autorise Gemini à chercher sur Google (comme dans l'appli Gemini) ; abandonné si le modèle ne le permet pas
-export async function aiAsk(parts, { key, model, maxTokens = 4000, json = true, search = false } = {}) {
-  const ai = getAI(); key = isGeminiKey(key) ? key : ai.key; model = isGeminiModel(model) ? model : ai.model;
-  if (!key) throw new Error('Ajoute ta clé Gemini dans les réglages (⚙︎)');
-  // Gemini est parfois saturé (« model overloaded », erreurs 503/429) : on réessaie, puis on bascule sur un autre modèle
-  const chain = await modelChain(key, model);
-  let useSearch = search;
-  const makeBody = () => JSON.stringify({
-    contents: [{ role: 'user', parts: parts.map(p => typeof p === 'string' ? { text: p } : { inline_data: { mime_type: p.mime, data: p.b64 } }) }],
-    ...(useSearch ? { tools: [{ google_search: {} }] } : {}),
-    generationConfig: { maxOutputTokens: maxTokens + 8192, /* les modèles récents « réfléchissent » sur ce même budget */ ...(json && !useSearch ? { responseMimeType: 'application/json' } : {}) }
-  });
-  let body = makeBody();
-  // Économe en quota : un modèle saturé (503) est réessayé 2 fois ; un quota atteint (429) n'est JAMAIS réessayé sur le même modèle.
-  let lastErr, quotaHit = false, sent = 0;
-  for (const m of chain.slice(0, 3)) {
-    let pauses = [0, 1500, 4000];
-    for (let t = 0; t < pauses.length; t++) {
-      if (pauses[t]) await new Promise(r => setTimeout(r, pauses[t]));
-      if (sent >= 6) break; // garde-fou : jamais plus de 6 envois pour une même demande
-      let r, j;
-      try {
-        sent++;
-        r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': key }, body });
-        j = await r.json().catch(() => ({}));
-      } catch (e) { lastErr = new Error('IA : réseau indisponible'); continue; }
-      const msg = j.error?.message || '';
-      if (r.ok) {
-        const txt = (j.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('');
-        if (txt) return txt;
-        lastErr = new Error('IA : réponse vide' + (j.promptFeedback?.blockReason ? ' (' + j.promptFeedback.blockReason + ')' : ''));
-        if (j.promptFeedback?.blockReason) throw lastErr;
-        continue;
-      }
-      lastErr = new Error('IA : ' + (msg || 'HTTP ' + r.status));
-      if (r.status === 404 || /not found|not supported|no longer available|deprecated|not available|update your code/i.test(msg)) { forgetModel(m); break; } // modèle retiré : on passe au suivant
-      if (useSearch && (r.status === 400 || r.status === 429)) { useSearch = false; body = makeBody(); pauses = [0]; t = -1; continue; } // recherche Google refusée ou hors quota : on réessaie une fois sans
-      if (r.status === 429 || /quota|exhausted|rate limit/i.test(msg)) {
-        quotaHit = true;
-        const wait = parseFloat((j.error?.details || []).find(d => /RetryInfo/.test(d['@type'] || ''))?.retryDelay) || 0;
-        if (wait > 0 && wait <= 20 && t === 0) { pauses = [0, wait * 1000 + 500]; continue; } // limite par minute : on attend ce que Google indique, une fois
-        break; // quota du jour : on passe au modèle suivant, qui a son propre quota
-      }
-      const busy = [500, 502, 503, 504].includes(r.status) || /overload|unavailable|try again/i.test(msg);
-      if (!busy) throw lastErr; // clé invalide, requête refusée… : inutile d'insister
-    }
-  }
-  if (quotaHit) throw new Error('Quota gratuit de Gemini atteint (par minute ou pour la journée). Réessaie dans une minute ; si ça persiste, c’est le quota du jour : il se réinitialise demain, ou active la facturation sur aistudio.google.com. Suivi : ai.dev/rate-limit');
-  const m0 = lastErr?.message || 'IA indisponible';
-  throw new Error(/overload|unavailable|503|réseau/i.test(m0) ? 'Gemini est saturé en ce moment, réessaie dans quelques minutes.' : m0);
-}
-
-export const setAI = a => { write('hub.ai', { ...(read('hub.ai', {}) || {}), ...a }); try { pushHubPrefs(); } catch { } };
+/* ---------- Tri 🛠️ : ce que les applis marquent « à traiter » ---------- */
+// Paperasse « à classer », Collections « à identifier », Cha-cha : opérations sans catégorie ou sans tag.
+// Le lien de la session de travail reste sur l'appareil (jamais dans le dépôt).
+export const TRI_MESSAGE = 'Traite mes demandes du hub : les fiches Paperasse à classer, les objets Collections à identifier et les opérations Cha-cha à classer, puis retire leur statut.';
+export const getTriLink = () => (read('hub.tri', {}) || {}).link || '';
+export const setTriLink = link => write('hub.tri', { link });
 export const ghReady = () => { const g = getGH(); return !!(g.owner && g.repo && g.token); };
 
 /* ---------- API GitHub (fichiers JSON) ---------- */
@@ -595,7 +492,7 @@ export class DocSync {
 
 /* ---------- Panneau de réglages communs ---------- */
 export function commonSettingsHTML() {
-  const g = getGH(), a = getAI(), p = read('hub.prefs', {}) || {};
+  const g = getGH(), p = read('hub.prefs', {}) || {};
   const f = (id, l, v, at = '') => `<div class="k-field"><label for="${id}">${l}</label><input id="${id}" value="${esc(v)}" ${at}></div>`;
   return `<div class="k-sec acc">Apparence</div>
   <div class="k-chips" id="cTheme">${[['auto', 'Selon le téléphone'], ['light', 'Clair'], ['dark', 'Sombre']].map(([k, l]) => `<button class="k-chip ${(p.theme || 'auto') === k ? 'on' : ''}" data-th="${k}">${l}</button>`).join('')}</div>
@@ -605,17 +502,17 @@ export function commonSettingsHTML() {
   ${f('cBranch', 'Branche', g.branch, 'autocapitalize="off"')}
   ${f('cToken', 'Jeton (Contents : lecture et écriture)', g.token, 'type="password" autocomplete="off"')}
   <div class="k-btns" style="margin:-2px 0 12px"><button type="button" class="k-btn line" id="cLogin">Activer le login (autre appareil)</button></div>
-  ${AI_APPS.includes(CURRENT_APP) ? `<div class="k-sec acc">IA (scan Paperasse, photo Collections, catégories Cha-cha)</div>
-  ${f('cAi', 'Clé API Gemini (Google AI Studio)', a.key, 'type="password" autocomplete="off" placeholder="AIza…"')}
-  <div class="k-field"><label for="cModel">Modèle</label><select id="cModel">${AI_MODELS.map(([v, l]) => `<option value="${v}" ${v === a.model ? 'selected' : ''}>${l}</option>`).join('')}</select></div>` : ''}
-  <p class="k-hint" id="cMsg">Le jeton${AI_APPS.includes(CURRENT_APP) ? ' et la clé restent' : ' reste'} sur ce téléphone.</p>`;
+  ${CURRENT_APP === 'hub' ? `<div class="k-sec acc">Tri 🛠️</div>
+  ${f('cTri', 'Lien de ma session de travail', getTriLink(), 'type="url" inputmode="url" autocapitalize="off" placeholder="https://…"')}
+  <p class="k-hint" style="margin-top:-6px">Le bouton 🛠️ en bas de l'accueil copie la demande puis ouvre ce lien.</p>` : ''}
+  <p class="k-hint" id="cMsg">Le jeton${CURRENT_APP === 'hub' ? ' et le lien restent' : ' reste'} sur cet appareil.</p>`;
 }
 export function bindCommonSettings(body, { onSaved } = {}) {
   $$('[data-th]', body).forEach(b => b.onclick = () => { $$('[data-th]', body).forEach(x => x.classList.toggle('on', x === b)); });
   if ($('#cLogin', body)) $('#cLogin', body).onclick = () => loginSetupSheet();
   const collect = () => {
     setGH({ owner: $('#cOwner', body).value.trim(), repo: $('#cRepo', body).value.trim(), branch: $('#cBranch', body).value.trim() || 'main', token: $('#cToken', body).value.trim() });
-    if ($('#cAi', body)) setAI({ key: $('#cAi', body).value.trim(), model: $('#cModel', body).value });
+    if ($('#cTri', body)) setTriLink($('#cTri', body).value.trim());
     const th = $('[data-th].on', body)?.dataset.th || 'auto';
     const prev = read('hub.prefs', {}) || {};
     write('hub.prefs', { ...prev, theme: th, sounds: $('#cSounds', body).checked });
@@ -708,7 +605,7 @@ export function openFeedback(appId = CURRENT_APP) {
 }
 
 /* ---------- Se déconnecter de cet appareil ---------- */
-// Efface de ce navigateur le jeton GitHub, la clé Gemini et toutes les données des applis.
+// Efface de ce navigateur le jeton GitHub, le lien du tri 🛠️ et toutes les données des applis.
 // Rien n'est effacé sur GitHub : il suffit de saisir le jeton sur un autre appareil pour tout retrouver.
 const OWN_PREFIXES = ['hub.', 'violette_', 'collections.', 'paperasse.', 'budget.', 'habits.', 'garage.', 'colis.', 'animaux.', 'plantes.', 'passerelle.', 'liquid_budget_'];
 export function unsyncedApps() {
@@ -736,7 +633,7 @@ async function wipeDevice() {
 export function logoutDevice() {
   const pend = unsyncedApps(), gh = ghReady();
   const body = openSheet('Se déconnecter de cet appareil', `
-    <p>Ce navigateur va oublier <b>le jeton GitHub, la clé Gemini et toutes les données</b> des applis (photos et PDF compris).</p>
+    <p>Ce navigateur va oublier <b>le jeton GitHub, le lien du tri 🛠️ et toutes les données</b> des applis (photos et PDF compris).</p>
     <p class="k-hint">Rien n'est effacé sur GitHub : sur ton téléphone ou un autre ordinateur, tout reste là.</p>
     ${pend.length ? `<div class="k-card" style="border:2px solid #ff4f5e"><b>⚠︎ Pas encore envoyé sur GitHub :</b> ${esc(pend.join(', '))}.<br><span class="k-hint">${gh ? 'Ouvre ces applis et attends « À jour » avant de te déconnecter, sinon ces modifications seront perdues.' : 'Le jeton n’est pas renseigné : ces modifications n’existent que sur cet appareil.'}</span></div>` : ''}
     <p class="k-hint">Pense aussi à fermer la fenêtre du navigateur. Si tu as oublié de te déconnecter d'un ordinateur, supprime le jeton sur GitHub (Settings → Developer settings → Personal access tokens) : il ne servira plus à rien, puis crée-en un nouveau.</p>

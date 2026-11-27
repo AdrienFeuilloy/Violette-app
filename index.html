@@ -17,7 +17,9 @@
 .q-date small{display:block;font-size:8px;letter-spacing:.5px}
 .q-k{font-size:9.5px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase}
 .glance .k-row{text-decoration:none;color:inherit}
-.foot{text-align:center;color:var(--mut);font-size:11.5px;margin:22px 0 6px}
+.foot{text-align:center;color:var(--mut);font-size:12px;margin:22px 0 6px}
+.foot a{color:inherit;text-decoration:none;display:inline-flex;gap:6px;align-items:center;padding:8px 12px;border-radius:999px;background:var(--card);box-shadow:var(--shadow)}
+.foot b{color:var(--acc)}
 </style>
 </head>
 <body>
@@ -26,10 +28,10 @@
   <div id="quest"></div>
   <div class="k-sec">En un coup d'œil</div>
   <div class="k-card flush glance" id="glance"></div>
-  <p class="foot">Gestion quotidien · v2.0.0</p>
+  <p class="foot"><a id="tri" href="#" target="_blank" rel="noopener">🛠️ <span id="triN">Tri</span></a></p>
 </main>
 <script type="module">
-import { initApp, hero, APPS, icon, rocket, esc, read, todayISO, daysTo, frDate, eur, openCommonSettings, $, isISO, ghReady, ghGetJSON } from './ui/kit.js';
+import { initApp, hero, APPS, icon, rocket, esc, read, todayISO, daysTo, frDate, eur, openCommonSettings, toast, $, isISO, ghReady, ghGetJSON, getTriLink, TRI_MESSAGE } from './ui/kit.js';
 initApp('hub');
 
 const prefs = read('hub.prefs', {}) || {};
@@ -71,12 +73,14 @@ function summaries() {
   const co = read('collections.data.v1', null) || remote.collections;
   const nCo = co?.items?.filter(i => i.status === 'possede').length || 0;
   const lent = co?.items?.filter(i => i.loan).length || 0;
-  out.push({ app: 'collections', line: co ? `${nCo} objets${lent ? ` · ${lent} prêté${lent > 1 ? 's' : ''}` : ''}` : 'Ta collection' });
+  const triCo = co?.items?.filter(i => i.tri).length || 0;
+  out.push({ app: 'collections', line: co ? `${nCo} objets${lent ? ` · ${lent} prêté${lent > 1 ? 's' : ''}` : ''}${triCo ? ` · ${triCo} à identifier` : ''}` : 'Ta collection' });
   // Paperasse
   const pa = read('paperasse.data.v1', null) || remote.paperasse;
   const due = (pa?.docs || []).filter(x => x.status === 'a_traiter' && isISO(x.dueDate)).map(x => ({ ...x, days: daysTo(x.dueDate) })).sort((a, b) => a.days - b.days);
   const soon = due.filter(x => x.days <= 7);
-  out.push({ app: 'paperasse', line: soon.length ? `${soon.length} échéance${soon.length > 1 ? 's' : ''} sous 7 jours` : 'Rien d’urgent', alert: soon.some(x => x.days < 0) });
+  const triPa = (pa?.docs || []).filter(x => x.tri).length;
+  out.push({ app: 'paperasse', line: (soon.length ? `${soon.length} échéance${soon.length > 1 ? 's' : ''} sous 7 jours` : 'Rien d’urgent') + (triPa ? ` · ${triPa} à classer` : ''), alert: soon.some(x => x.days < 0) });
   if (soon[0]) urgent.push({ app: 'paperasse', title: soon[0].title, sub: `${soon[0].days < 0 ? 'en retard de ' + (-soon[0].days) + ' j' : soon[0].days === 0 ? "aujourd'hui" : 'dans ' + soon[0].days + ' j'}${soon[0].amount ? ' · ' + eur(soon[0].amount) : ''}`, date: soon[0].dueDate, k: 'Quête du jour' });
   // Budget, Garage, Colis : résumés publiés par les apps
   for (const id of ['budget', 'garage', 'colis', 'animaux', 'plantes']) {
@@ -87,11 +91,13 @@ function summaries() {
   const order = APPS.map(a => a.id);
   out.sort((a, b) => order.indexOf(a.app) - order.indexOf(b.app));
   urgent.sort((a, b) => (a.late ? 0 : 1) - (b.late ? 0 : 1));
-  return { out, urgent };
+  const todo = triCo + triPa + (read('hub.summary.budget', null)?.todo || 0);
+  return { out, urgent, todo };
 }
 
 function drawBody() {
-  const { out, urgent } = summaries();
+  const { out, urgent, todo } = summaries();
+  $('#triN').innerHTML = todo ? `<b>${todo}</b> à traiter` : 'Tri';
   const q = urgent[0];
   if (q) {
     const a = APPS.find(x => x.id === q.app);
@@ -128,6 +134,14 @@ async function weather() {
     localStorage.setItem('hub.weather', JSON.stringify(wx)); drawHero();
   } catch { }
 }
+
+// 🛠️ : copie la demande toute prête, puis ouvre la session de travail (lien réglé dans ⚙︎, gardé sur l'appareil)
+$('#tri').onclick = e => {
+  const link = getTriLink();
+  if (!/^https?:\/\//.test(link)) { e.preventDefault(); toast('Règle d’abord le lien de ta session dans ⚙︎'); settings(); setTimeout(() => $('#cTri')?.focus(), 350); return; }
+  $('#tri').href = link; // ouvert par le lien lui-même : pas bloqué comme une fenêtre surgissante
+  try { navigator.clipboard.writeText(TRI_MESSAGE).then(() => toast('Demande copiée : colle-la dans la session'), () => toast('Copie impossible : écris « Traite mes demandes du hub »')); } catch { }
+};
 
 drawHero(); drawBody(); weather(); warmRemote();
 addEventListener('k-summaries', () => drawBody());

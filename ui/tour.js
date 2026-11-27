@@ -6,7 +6,8 @@ const TOURS = {
     { sel: '.k-hero .k-ring', title: 'Tes applis', text: 'Chaque rond ouvre une appli. La couleur du rond, c’est la couleur de l’appli.' },
     { sel: '#quest', title: 'La quête du jour', text: 'Rocket remonte ici la chose la plus urgente, toutes applis confondues : une échéance, un vermifuge, un entretien…' },
     { sel: '#glance', title: 'En un coup d’œil', text: 'Une ligne par appli. Un « ! » rouge veut dire qu’il y a du retard. Touche une ligne pour ouvrir l’appli.' },
-    { sel: '#set', title: 'Réglages', text: 'Le jeton GitHub (une seule fois pour toutes les applis), la clé Gemini, ton prénom, le thème clair ou sombre, et « Se déconnecter de cet appareil ».' },
+    { sel: '#tri', title: 'Tri 🛠️', text: 'Le compteur des choses à traiter : fiches Paperasse à classer, objets Collections à identifier, opérations Cha-cha à classer. Touche-le : la demande est copiée et ta session de travail s’ouvre.' },
+    { sel: '#set', title: 'Réglages', text: 'Le jeton GitHub (une seule fois pour toutes les applis), le lien de ta session de travail pour 🛠️, ton prénom, le thème clair ou sombre, et « Se déconnecter de cet appareil ».' },
   ],
   violette: [
     { sel: '.k-hero .k-ring', title: 'Raccourcis', text: 'Résumé, Stocks et Menus : les trois parties de l’appli, aussi accessibles par la barre du bas.' },
@@ -37,7 +38,7 @@ const TOURS = {
   budget: [
     { sel: '.k-hero .k-ring', title: 'Le mois en un coup d’œil', text: 'Solde, revenus, dépenses inévitables et évitables de la période choisie.' },
     { sel: '#per', title: 'Période', text: 'Change de mois ou regarde l’année entière.' },
-    { sel: '.k-fab', title: 'Importer', text: 'Importe un relevé CSV de ta banque : les opérations sont classées automatiquement (règles, ce que l’appli a appris de tes choix, puis Gemini avec les seuls libellés).' },
+    { sel: '.k-fab', title: 'Importer', text: 'Importe un relevé CSV de ta banque : les opérations sont classées par tes règles et ce que l’appli a appris de tes choix. Le reste reste « à classer » pour le tri 🛠️ de l’accueil.' },
     { sel: '[data-tab="ops"]', click: '[data-tab="ops"]', title: 'Opérations', text: 'Touche une opération pour changer sa catégorie : l’appli s’en souvient pour les suivantes. Le pas-à-pas classe celles qui restent.' },
     { sel: '[data-tab="wish"]', click: '[data-tab="wish"]', title: 'Achats', text: 'Ta liste d’achats. Selon le solde de fin de mois, Cha-cha propose quoi acheter, par ordre d’importance.' },
     { sel: '#set', click: '[data-tab="dash"]', title: 'Réglages', text: 'La réserve à garder, tes catégories et la sauvegarde.' },
@@ -57,17 +58,17 @@ const TOURS = {
   ],
   paperasse: [
     { sel: '.k-hero .k-ring', title: 'Ce qui compte', text: 'Les échéances en retard, celles des 30 prochains jours, les garanties actives et les documents à traiter.' },
-    { sel: '#fab', title: 'Scanner un document', text: 'Photo ou PDF. Le téléphone lit le texte, masque montants, dates, numéros et noms, puis Gemini le classe. Vérifie la fiche avant d’enregistrer.' },
+    { sel: '#fab', title: 'Scanner un document', text: 'Photo ou PDF. Le téléphone lit le texte, masque montants, dates, numéros et noms, puis range la fiche « à classer ». Le tri 🛠️ de l’accueil la remplit.' },
     { sel: '[data-nav="#/agenda"]', click: '[data-nav="#/agenda"]', title: 'Agenda', text: 'Toutes les échéances : paiements, fins de contrat, garanties. Chacune s’exporte en rappel dans l’agenda du téléphone.' },
     { sel: '[data-nav="#/todo"]', click: '[data-nav="#/todo"]', title: 'À traiter', text: 'Ce qui demande une action et ce qui n’est pas encore classé.' },
-    { sel: '#settingsBtn', click: '[data-nav="#/"]', title: 'Réglages', text: 'Les noms à masquer avant l’envoi à l’IA, le délai des rappels et la sauvegarde.' },
+    { sel: '#settingsBtn', click: '[data-nav="#/"]', title: 'Réglages', text: 'Les noms à masquer dans le texte scanné, le délai des rappels et la sauvegarde.' },
   ],
   collections: [
     { sel: '.k-hero .k-ring', title: 'Ta collection', text: 'Objets possédés, envies, prêts en cours et nombre de collections.' },
-    { sel: '#fab', title: 'Ajouter', text: 'En photo (un objet ou toute une étagère : Gemini les reconnaît), par code-barres, ou à la main.' },
+    { sel: '#fab', title: 'Ajouter', text: 'En photo (la fiche arrive « à identifier » et le tri 🛠️ de l’accueil la remplit), par code-barres, ou à la main.' },
     { sel: '[data-nav="#/all"]', click: '[data-nav="#/all"]', title: 'Tout', text: 'Tous tes objets, à filtrer et trier.' },
     { sel: '[data-nav="#/suivi"]', click: '[data-nav="#/suivi"]', title: 'Suivi', text: 'Ce que tu as prêté (et à qui), et ta liste d’envies.' },
-    { sel: '#settingsBtn', click: '[data-nav="#/"]', title: 'Réglages', text: 'La clé Gemini et la sauvegarde.' },
+    { sel: '#settingsBtn', click: '[data-nav="#/"]', title: 'Réglages', text: 'Le dépôt, les belles images et la sauvegarde.' },
   ],
 };
 

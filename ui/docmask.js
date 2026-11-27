@@ -1,10 +1,10 @@
-// Masquage d'un document avant l'envoi à l'IA (Paperasse, « Option A »).
+// Masquage du texte d'un document scanné (Paperasse) avant de l'enregistrer dans la fiche.
 // Tout se passe sur le téléphone : le texte du document est lu ici, puis
-// - chaque date devient un repère [DATE1], [DATE2]… (la vraie date reste ici),
-// - chaque montant devient [MONTANT1], [MONTANT2]… (le vrai montant reste ici),
+// - chaque date devient un repère [DATE1], [DATE2]…,
+// - chaque montant devient [MONTANT1], [MONTANT2]…,
 // - les adresses e-mail deviennent [EMAIL], les adresses postales [ADRESSE], les prénoms du foyer [PERSONNE],
 // - tout autre nombre de 3 chiffres ou plus (IBAN, carte, compte, sécu, téléphone, code postal, référence) devient ###.
-// L'IA ne voit que les repères : elle dit lequel est la date limite ou le montant principal, sans jamais en voir la valeur.
+// Le texte enregistré ne contient que les repères ; les photos ou le PDF restent joints à la fiche.
 
 const MONTHS = { janv: 1, janvier: 1, fevr: 2, fevrier: 2, mars: 3, avr: 4, avril: 4, mai: 5, juin: 6, juil: 7, juillet: 7, aout: 8, sept: 9, septembre: 9, oct: 10, octobre: 10, nov: 11, novembre: 11, dec: 12, decembre: 12 };
 const strip = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\.$/, '');
@@ -73,15 +73,3 @@ export function maskDocument(text, { names = [] } = {}) {
   return { masked: t, dates, amounts, reference };
 }
 
-// Remplace les repères de la réponse de l'IA par les vraies valeurs (restées sur le téléphone).
-export function unmask(x, { dates, amounts }) {
-  const pick = (v, list, prefix) => { const m = String(v || '').match(new RegExp(`${prefix}(\\d+)`)); return m ? list[+m[1] - 1] ?? '' : ''; };
-  const out = { ...x };
-  for (const k of ['docDate', 'dueDate', 'endDate', 'warrantyEnd']) out[k] = pick(x[k], dates, 'DATE');
-  const a = pick(x.amount, amounts, 'MONTANT');
-  out.amount = a === '' ? '' : String(a);
-  const fill = s => String(s || '').replace(/\[DATE(\d+)\]/g, (_, n) => { const d = dates[+n - 1]; return d ? d.split('-').reverse().join('/') : ''; })
-    .replace(/\[MONTANT(\d+)\]/g, (_, n) => { const v = amounts[+n - 1]; return v != null ? v.toLocaleString('fr-FR', { minimumFractionDigits: 2 }) + ' €' : ''; });
-  for (const k of ['title', 'action', 'summary']) if (out[k]) out[k] = fill(out[k]);
-  return out;
-}
